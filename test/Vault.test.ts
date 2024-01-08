@@ -8,21 +8,31 @@ import { getAddress, parseGwei } from "viem";
 
 describe("Vault", function () {
   async function deployVaultFixture() {
-    const { deployer } = await hre.getNamedAccounts();
+    const [deployer, user] = await hre.viem.getWalletClients();
 
     // await hre.deployments.fixture(['Vault']);
 
     // const Vault = await hre.deployments.get('Vault');
     // const vault = await hre.viem.getContractAt('Vault', Vault.address);
+
+    const usdt = await hre.viem.deployContract("MockUSDT");
     const vault = await hre.viem.deployContract("Vault", [
       "Vault",
       "BLT",
-      "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      usdt.address,
+    ]);
+
+    await usdt.write.mint([
+      user.account.address,
+      BigInt(100_000) * BigInt(10 ** 6),
     ]);
 
     return {
       vault,
-      deployer: deployer as `0x${string}`,
+      deployer: deployer.account.address,
+      user,
+      usdt,
+      owner: deployer,
     };
   }
   describe("Deployment", function () {
@@ -40,16 +50,42 @@ describe("Vault", function () {
     });
   });
 
+  const toBN = (n: number) => BigInt(n) * BigInt(10 ** 6);
+
   describe("Deposit", function () {
     it("Should deposit", async function () {
-      const { vault, deployer } = await loadFixture(deployVaultFixture);
+      const { vault, deployer, usdt, user, owner } =
+        await loadFixture(deployVaultFixture);
 
-      await vault.write.deposit([BigInt("1000"), deployer]);
-      await vault.write.deposit([BigInt("2000"), deployer]);
-      await vault.write.deposit([BigInt("3000"), deployer]);
-      await vault.write.deposit([BigInt("4000"), deployer]);
+      expect(await usdt.read.balanceOf([user.account.address])).to.equal(
+        toBN(100_000),
+      );
 
-      console.log(await vault.read.depositQueue());
+      await usdt.write.approve([vault.address, toBN(10_000)], {
+        account: user.account,
+      });
+
+      await vault.write.deposit([BigInt(toBN(10_000)), user.account.address], {
+        account: user.account,
+      });
+
+      expect(await usdt.read.balanceOf([user.account.address])).to.equal(
+        toBN(90_000),
+      );
+
+      expect(await usdt.read.balanceOf([vault.address])).to.equal(toBN(0));
+      expect(await usdt.read.balanceOf([owner.account.address])).to.equal(
+        toBN(10_000),
+      );
+
+      expect(await vault.read.depositQueue()).to.deep.equal([
+        {
+          sender: getAddress(user.account.address),
+          receiver: getAddress(user.account.address),
+          assets: toBN(10_000),
+          timestamp: await time.latest(),
+        },
+      ]);
     });
   });
 });

@@ -5,9 +5,10 @@ import {IERC20, ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/DoubleEndedQueue.sol";
 
+// receiver reciever
 struct QueueItem {
     address sender; // ? Should we store this?
-    address reciever;
+    address receiver;
     uint256 assets;
     uint32 timestamp;
 }
@@ -49,8 +50,8 @@ contract Vault is ERC20, Ownable {
 
     // ? Should we rename this to something else since its not strictly a deposit
     function deposit(uint256 assets, address receiver) public virtual {
-        // _asset.transferFrom(_msgSender(), address(this), assets);
-        // _asset.transferFrom(address(this), owner(), assets);
+        _asset.transferFrom(_msgSender(), address(this), assets);
+        _asset.transfer(owner(), assets);
         QueueItem memory item = QueueItem(
             msg.sender,
             receiver,
