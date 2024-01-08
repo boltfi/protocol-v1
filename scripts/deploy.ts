@@ -1,5 +1,5 @@
-import { formatEther, parseEther } from "viem";
 import hre from "hardhat";
+import { formatEther, parseEther } from "viem";
 
 async function main() {
   const currentTimestampInSeconds = Math.round(Date.now() / 1000);
@@ -13,8 +13,8 @@ async function main() {
 
   console.log(
     `Lock with ${formatEther(
-      lockedAmount
-    )}ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`
+      lockedAmount,
+    )}ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`,
   );
 }
 
