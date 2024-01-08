@@ -10,10 +10,18 @@
 		"@types/node": "^20.10.7",
 		"chai": "^4.2.0",
 		"hardhat": "^2.19.4",
+		"hardhat-deploy": "^0.11.45",
 		"hardhat-gas-reporter": "^1.0.8",
 		"solidity-coverage": "^0.8.0",
 		"ts-node": "^10.9.2",
 		"typescript": "~5.0.4",
 		"viem": "^1.15.1"
-	}
+	},
+	"dependencies": {
+		"@openzeppelin/contracts": "^5.0.1"
+	},
+  "scripts": {
+    "deploy": "hardhat deploy",
+    "test": "hardhat test"
+  }
 }
