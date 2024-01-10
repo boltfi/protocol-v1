@@ -2,13 +2,15 @@ import {
   loadFixture,
   time,
 } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
-import { expect } from "chai";
+import chai, { expect } from "chai";
+import chaiAsPromised from "chai-as-promised";
 import hre, { getNamedAccounts } from "hardhat";
 import { getAddress, parseGwei } from "viem";
 
+chai.use(chaiAsPromised);
 describe("Vault", function () {
   async function deployVaultFixture() {
-    const [deployer, user] = await hre.viem.getWalletClients();
+    const [deployer, owner, user] = await hre.viem.getWalletClients();
 
     // await hre.deployments.fixture(['Vault']);
 
@@ -20,6 +22,7 @@ describe("Vault", function () {
       "Vault",
       "BLT",
       usdt.address,
+      owner.account.address,
     ]);
 
     await usdt.write.mint([
@@ -32,7 +35,7 @@ describe("Vault", function () {
       deployer: deployer.account.address,
       user,
       usdt,
-      owner: deployer,
+      owner: owner,
     };
   }
   describe("Deployment", function () {
@@ -41,12 +44,47 @@ describe("Vault", function () {
       expect(await vault.read.name()).to.equal("Vault");
       expect(await vault.read.symbol()).to.equal("BLT");
     });
-    it("Should set the right asset", async function () {});
+
+    it("Should set the right asset");
 
     it("Should set the right owner", async function () {
-      const { vault, deployer } = await loadFixture(deployVaultFixture);
+      const { vault, owner } = await loadFixture(deployVaultFixture);
 
-      expect(await vault.read.owner()).to.equal(getAddress(deployer));
+      expect(await vault.read.owner()).to.equal(
+        getAddress(owner.account.address),
+      );
+    });
+  });
+
+  describe("Price management", function () {
+    it("Owner can update price", async function () {
+      const { vault, owner } = await loadFixture(deployVaultFixture);
+      const price = BigInt(10 ** 6);
+      await vault.write.updatePrice([price], {
+        account: owner.account,
+      });
+
+      const now = await time.latest();
+      expect(await vault.read.price()).to.equal(price);
+      expect(await vault.read.priceUpdatedAt()).to.equal(BigInt(now));
+    });
+
+    it("Deployer cannot update the price", async function () {
+      const { vault, deployer } = await loadFixture(deployVaultFixture);
+      await expect(
+        vault.write.updatePrice([BigInt(10 ** 6)], {
+          account: deployer.account,
+        }),
+      ).to.eventually.be.rejectedWith("OwnableUnauthorizedAccount");
+    });
+
+    it("Users cannot update the price", async function () {
+      const { vault, user } = await loadFixture(deployVaultFixture);
+      await expect(
+        vault.write.updatePrice([BigInt(10 ** 6)], {
+          account: user.account,
+        }),
+      ).to.eventually.be.rejectedWith("OwnableUnauthorizedAccount");
     });
   });
 

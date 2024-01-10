@@ -34,18 +34,31 @@ library VaultQueue {
 contract Vault is ERC20, Ownable {
     IERC20 private immutable _asset;
 
+    uint256 public price;
+    uint256 public priceUpdatedAt;
     VaultQueue.Queue myQueue;
+
+    modifier onlyUpdatedPrice() {
+        require(priceUpdatedAt > block.timestamp - 1 days, "Price is outdated");
+        _;
+    }
 
     constructor(
         string memory name_,
         string memory symbol_,
-        IERC20 asset_
-    ) ERC20(name_, symbol_) Ownable(msg.sender) {
+        IERC20 asset_,
+        address owner_
+    ) ERC20(name_, symbol_) Ownable(owner_) {
         _asset = asset_;
     }
 
     function asset() public view virtual returns (address) {
         return address(_asset);
+    }
+
+    function updatePrice(uint256 newPrice) public onlyOwner {
+        price = newPrice;
+        priceUpdatedAt = block.timestamp;
     }
 
     // ? Should we rename this to something else since its not strictly a deposit
