@@ -28,6 +28,7 @@
   },
   "scripts": {
     "deploy": "hardhat deploy",
+    "hardhat": "hardhat",
     "docgen": "hardhat docgen",
     "format": "prettier --write .",
     "mythril": "docker run --platform=linux/amd64 -v .:/tmp mythril/myth analyze /tmp/contracts/Vault.sol --solc-json /tmp/mythril.json",

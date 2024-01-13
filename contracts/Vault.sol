@@ -6,7 +6,7 @@ import {IERC20, ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {DoubleEndedQueue} from "./DoubleEndedQueue.sol";
+import {DoubleEndedQueue} from "./libraries/DoubleEndedQueue.sol";
 
 contract Vault is ERC20, Ownable, Pausable {
     using Math for uint256;

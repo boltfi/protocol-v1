@@ -7,8 +7,8 @@ const func: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deployer } = await getNamedAccounts();
 
   await deploy(`USDT`, {
-    args: ["Tether USD", "USDT"],
-    contract: "MockERC20",
+    args: [],
+    contract: "MockUSDT",
     from: deployer,
     log: true,
   });
