@@ -201,13 +201,17 @@ describe("Vault", function () {
     it("Owner can update price", async function () {
       const { vault, owner } = await loadFixture(fixtureNewVault);
       const price = BigInt(10 ** 6);
-      await vault.write.updatePrice([price], {
+      const hash = await vault.write.updatePrice([price], {
         account: owner.account,
       });
 
       const now = await time.latest();
       expect(await vault.read.price()).to.equal(price);
       expect(await vault.read.priceUpdatedAt()).to.equal(BigInt(now));
+
+      expect(await getEmittedEvent(hash, vault.abi, "PriceUpdate")).to.deep.equal({
+        price,
+      });
     });
 
     it("Deployer cannot update the price", async function () {
@@ -285,11 +289,11 @@ describe("Vault", function () {
         toBN(10_000, 6),
       );
 
-      expect(await vault.read.depositQueue()).to.deep.equal([
+      expect(await vault.read.pendingDeposits()).to.deep.equal([
         {
           sender: getAddress(user.account.address),
           receiver: getAddress(user.account.address),
-          amount: toBN(10_000, 6),
+          assets: toBN(10_000, 6),
           timestamp: await time.latest(),
         },
       ]);
@@ -325,11 +329,11 @@ describe("Vault", function () {
         fixtureWithPendingDeposit,
       );
 
-      expect(await vault.read.depositQueue()).to.deep.equal([
+      expect(await vault.read.pendingDeposits()).to.deep.equal([
         {
           sender: getAddress(user.account.address),
           receiver: getAddress(user.account.address),
-          amount: toBN(10_000, 6),
+          assets: toBN(10_000, 6),
           timestamp: await time.latest(),
         },
       ]);
@@ -344,7 +348,7 @@ describe("Vault", function () {
         account: owner.account,
       });
 
-      expect(await vault.read.depositQueue()).to.deep.equal([]);
+      expect(await vault.read.pendingDeposits()).to.deep.equal([]);
 
       expect(await vault.read.totalAssets()).to.equal(toBN(10_000, 6));
       expect(await vault.read.totalSupply()).to.equal(toBN(10_000, 18));
@@ -393,7 +397,7 @@ describe("Vault", function () {
       );
       expect(await vault.read.totalSupply()).to.equal(toBN(10_000, 18));
 
-      expect(await vault.read.redeemQueue()).to.deep.equal([
+      expect(await vault.read.pendingRedeems()).to.deep.equal([
         {
           caller: getAddress(user.account.address),
           owner: getAddress(user.account.address),
@@ -415,7 +419,7 @@ describe("Vault", function () {
       expect(await usdt.read.balanceOf([user.account.address])).to.equal(
         toBN(90_000, 6),
       );
-      expect(await vault.read.redeemQueue()).to.deep.equal([
+      expect(await vault.read.pendingRedeems()).to.deep.equal([
         {
           caller: getAddress(user.account.address),
           owner: getAddress(user.account.address),
@@ -435,7 +439,7 @@ describe("Vault", function () {
         { account: owner.account },
       );
 
-      expect(await vault.read.redeemQueue()).to.deep.equal([]);
+      expect(await vault.read.pendingRedeems()).to.deep.equal([]);
 
       expect(await vault.read.totalAssets()).to.equal(toBN(0, 6));
       expect(await vault.read.totalSupply()).to.equal(toBN(0, 18));
