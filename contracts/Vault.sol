@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.20;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -9,21 +9,24 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {DoubleEndedQueue} from "./libraries/DoubleEndedQueue.sol";
 
 contract Vault is ERC20, Ownable, Pausable {
-    using Math for uint256;
-    using SafeERC20 for IERC20;
+    IERC20 private immutable _asset;
 
-    /**
-     * @dev Attempted to redeem more shares than the max amount for `receiver`.
-     */
-    error ERC4626ExceededMaxRedeem(address owner, uint256 shares, uint256 max);
+    uint256 public price;
+    uint256 public priceUpdatedAt;
+    uint256 public withdrawalFee;
+    uint256 public totalAssetsDeposited;
+    uint256 public totalAssetsWithdrawn;
 
+    DoubleEndedQueue.BytesDeque private _depositQueue;
+    DoubleEndedQueue.BytesDeque private _redeemQueue;
+
+    // events
     event Deposit(
         address indexed sender,
         address indexed owner,
         uint256 assets,
         uint256 shares
     );
-
     event Withdraw(
         address indexed sender,
         address indexed receiver,
@@ -31,16 +34,21 @@ contract Vault is ERC20, Ownable, Pausable {
         uint256 assets,
         uint256 shares
     );
-
     event PriceUpdate(uint256 price);
 
+    // Function modifiers
+    modifier onlyUpdatedPrice() {
+        require(priceUpdatedAt > block.timestamp - 1 days, "Price is outdated");
+        _;
+    }
+
+    // Structs, arrays, or enums
     struct DepositItem {
         address sender;
         address receiver;
         uint256 assets;
         uint32 timestamp;
     }
-
     struct RedeemItem {
         address caller;
         address owner;
@@ -49,20 +57,11 @@ contract Vault is ERC20, Ownable, Pausable {
         uint32 timestamp;
     }
 
-    IERC20 private immutable _asset;
-
-    uint256 public price;
-    uint256 public priceUpdatedAt;
-    uint256 public withdrawalFee;
-    uint256 public totalAssetsDeposited;
-    uint256 public totalAssetsWithdrawn;
-    DoubleEndedQueue.BytesDeque private _depositQueue;
-    DoubleEndedQueue.BytesDeque private _redeemQueue;
-
-    modifier onlyUpdatedPrice() {
-        require(priceUpdatedAt > block.timestamp - 1 days, "Price is outdated");
-        _;
-    }
+    // Errors
+    /**
+     * @dev Attempted to redeem more shares than the max amount for `receiver`.
+     */
+    error ERC4626ExceededMaxRedeem(address owner, uint256 shares, uint256 max);
 
     constructor(
         string memory name_,
@@ -73,91 +72,13 @@ contract Vault is ERC20, Ownable, Pausable {
         _asset = asset_;
     }
 
-    function decimals() public view virtual override(ERC20) returns (uint8) {
-        return 18;
-    }
-
-    function asset() public view virtual returns (address) {
-        return address(_asset);
-    }
-
-    function convertToShares(
-        uint256 assets
-    ) public view virtual returns (uint256) {
-        // TODO:- Check rounding
-        return assets / price;
-    }
-
-    function convertToAssets(
-        uint256 shares
-    ) public view virtual returns (uint256) {
-        // TODO:- Check rounding
-        return shares * price;
-    }
-
-    function totalAssets() public view virtual returns (uint256) {
-        // TODO: ! This is wrong - it can become negative
-        return totalAssetsDeposited - totalAssetsWithdrawn;
-    }
-
-    function maxDeposit(address) public view virtual returns (uint256) {
-        return type(uint256).max; // No limit
-    }
-
-    /** @dev See {IERC4626-maxRedeem}. */
-    // Owner is the owner of the shares 4626 terminalogy
-    function maxRedeem(address owner_) public view virtual returns (uint256) {
-        return balanceOf(owner_);
-    }
-
-    function updatePrice(uint256 newPrice) public onlyOwner {
-        price = newPrice;
-        priceUpdatedAt = block.timestamp;
-        emit PriceUpdate(newPrice);
-    }
-
-    function updateWithdrawalFee(uint256 withdrawalFee_) public onlyOwner {
-        withdrawalFee = withdrawalFee_;
-    }
-
-    function pause() external onlyOwner {
-        _pause();
-    }
-
-    function unpause() external onlyOwner {
-        _unpause();
-    }
-
-    function pendingDeposits() public view returns (DepositItem[] memory) {
-        uint256 len = DoubleEndedQueue.length(_depositQueue);
-        DepositItem[] memory queueItems = new DepositItem[](len);
-        for (uint256 i = 0; i < len; i++) {
-            queueItems[i] = abi.decode(
-                DoubleEndedQueue.at(_depositQueue, i),
-                (DepositItem)
-            );
-        }
-        return queueItems;
-    }
-
-    function pendingRedeems() public view returns (RedeemItem[] memory) {
-        uint256 len = DoubleEndedQueue.length(_redeemQueue);
-        RedeemItem[] memory queueItems = new RedeemItem[](len);
-        for (uint128 i = 0; i < len; i++) {
-            queueItems[i] = abi.decode(
-                DoubleEndedQueue.at(_redeemQueue, i),
-                (RedeemItem)
-            );
-        }
-        return queueItems;
-    }
-
+    // External User Functions
     function deposit(
         uint256 assets,
         address receiver
-    ) public virtual whenNotPaused {
-        _asset.safeTransferFrom(_msgSender(), address(this), assets);
-        _asset.safeTransfer(owner(), assets);
+    ) external virtual whenNotPaused {
+        SafeERC20.safeTransferFrom(_asset, _msgSender(), address(this), assets);
+        SafeERC20.safeTransfer(_asset, owner(), assets);
 
         DepositItem memory item = DepositItem(
             _msgSender(),
@@ -168,7 +89,44 @@ contract Vault is ERC20, Ownable, Pausable {
         DoubleEndedQueue.pushBack(_depositQueue, abi.encode(item));
     }
 
-    function processDeposits(uint128 number) public onlyOwner onlyUpdatedPrice {
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner_
+    ) external virtual whenNotPaused {
+        uint256 maxShares = maxRedeem(owner_);
+        if (shares > maxShares) {
+            revert ERC4626ExceededMaxRedeem(owner_, shares, maxShares);
+        }
+
+        // Hold the shares in the contract, and burn them later when processed
+        // This blocks users from transfering shares while in the queue
+        _transfer(_msgSender(), address(this), shares);
+
+        RedeemItem memory item = RedeemItem(
+            _msgSender(),
+            owner_,
+            receiver,
+            shares,
+            uint32(block.timestamp)
+        );
+        DoubleEndedQueue.pushBack(_redeemQueue, abi.encode(item));
+    }
+
+    // External owner functions
+    function updatePrice(uint256 newPrice) external onlyOwner {
+        price = newPrice;
+        priceUpdatedAt = block.timestamp;
+        emit PriceUpdate(newPrice);
+    }
+
+    function updateWithdrawalFee(uint256 withdrawalFee_) external onlyOwner {
+        withdrawalFee = withdrawalFee_;
+    }
+
+    function processDeposits(
+        uint128 number
+    ) external onlyOwner onlyUpdatedPrice {
         uint256 total = 0; // Local variable for gas optimization
         for (uint128 i = 0; i < number; i++) {
             DepositItem memory item = abi.decode(
@@ -183,34 +141,11 @@ contract Vault is ERC20, Ownable, Pausable {
         totalAssetsDeposited += total;
     }
 
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner_
-    ) public virtual whenNotPaused {
-        uint256 maxShares = maxRedeem(owner_);
-        if (shares > maxShares) {
-            revert ERC4626ExceededMaxRedeem(owner_, shares, maxShares);
-        }
-        // Transfer to contract first,
-        _transfer(_msgSender(), address(this), shares);
-
-        // Add to queue
-        RedeemItem memory item = RedeemItem(
-            _msgSender(),
-            owner_,
-            receiver,
-            shares,
-            uint32(block.timestamp)
-        );
-        DoubleEndedQueue.pushBack(_redeemQueue, abi.encode(item));
-    }
-
     function processRedeems(
         uint128 number,
         uint256 total
-    ) public onlyOwner onlyUpdatedPrice {
-        _asset.safeTransferFrom(_msgSender(), address(this), total);
+    ) external onlyOwner onlyUpdatedPrice {
+        SafeERC20.safeTransferFrom(_asset, _msgSender(), address(this), total);
 
         for (uint256 i = 0; i < number; i++) {
             RedeemItem memory item = abi.decode(
@@ -218,9 +153,17 @@ contract Vault is ERC20, Ownable, Pausable {
                 (RedeemItem)
             );
             uint256 assets = convertToShares(item.shares);
-            // TODO:- Add withdrawal fee
+            uint256 fee = Math.mulDiv(
+                assets,
+                withdrawalFee,
+                10 ** 6,
+                Math.Rounding.Floor // ? Confirm with team if this is appropriate
+            );
+            assets = assets - fee;
+
+            // Burn the shares locked in the contract pending redeem
             _burn(address(this), item.shares);
-            _asset.safeTransfer(item.receiver, assets);
+            SafeERC20.safeTransfer(_asset, item.receiver, assets);
             emit Withdraw(
                 item.caller,
                 item.receiver,
@@ -230,8 +173,17 @@ contract Vault is ERC20, Ownable, Pausable {
             );
         }
 
+        // Expect all the assets to be spent
         require(_asset.balanceOf(address(this)) == 0, "Incorrect amount given");
         totalAssetsWithdrawn += total;
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
     }
 
     /// @dev ETH can't be recieve as the contract has no fallback function
@@ -239,5 +191,66 @@ contract Vault is ERC20, Ownable, Pausable {
         uint256 balance = token.balanceOf(address(this));
         require(balance > 0, "Contract has no balance");
         require(token.transfer(owner(), balance), "Transfer failed");
+    }
+
+    // External view functions
+    function pendingDeposits() external view returns (DepositItem[] memory) {
+        uint256 len = DoubleEndedQueue.length(_depositQueue);
+        DepositItem[] memory queueItems = new DepositItem[](len);
+        for (uint256 i = 0; i < len; i++) {
+            queueItems[i] = abi.decode(
+                DoubleEndedQueue.at(_depositQueue, i),
+                (DepositItem)
+            );
+        }
+        return queueItems;
+    }
+
+    function pendingRedeems() external view returns (RedeemItem[] memory) {
+        uint256 len = DoubleEndedQueue.length(_redeemQueue);
+        RedeemItem[] memory queueItems = new RedeemItem[](len);
+        for (uint128 i = 0; i < len; i++) {
+            queueItems[i] = abi.decode(
+                DoubleEndedQueue.at(_redeemQueue, i),
+                (RedeemItem)
+            );
+        }
+        return queueItems;
+    }
+
+    // ============== Public Functions
+    function asset() public view virtual returns (address) {
+        return address(_asset);
+    }
+
+    function convertToAssets(
+        uint256 shares
+    ) public view virtual returns (uint256) {
+        return shares * price;
+    }
+
+    function convertToShares(
+        uint256 assets
+    ) public view virtual returns (uint256) {
+        return assets / price;
+    }
+
+    function decimals() public view virtual override(ERC20) returns (uint8) {
+        return 18;
+    }
+
+    function maxDeposit(address) public view virtual returns (uint256) {
+        return type(uint256).max; // No limit
+    }
+
+    /** @dev See {IERC4626-maxRedeem}. */
+    // Owner is the owner of the shares 4626 terminalogy
+    function maxRedeem(address owner_) public view virtual returns (uint256) {
+        return balanceOf(owner_);
+    }
+
+    // TODO: ! This is wrong - it can become negative -- think we cannot track on-chain?
+    function totalAssets() public view virtual returns (uint256) {
+        return totalAssetsDeposited - totalAssetsWithdrawn;
     }
 }

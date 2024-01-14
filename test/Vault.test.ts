@@ -75,7 +75,7 @@ describe("Vault", function () {
 
     const { vault, owner } = deployment;
 
-    await vault.write.updatePrice([BigInt(10 ** (18 - 6))], {
+    await vault.write.updatePrice([BigInt(10 ** 12)], {
       account: owner.account,
     });
 
@@ -197,6 +197,32 @@ describe("Vault", function () {
     });
   });
 
+  describe("Price conversion", function () {
+    it("Can round down in conversion from shares to assets", async function () {
+      const { vault, owner } = await loadFixture(fixtureNewVault);
+
+      await vault.write.updatePrice([BigInt("666666666666")], {
+        account: owner.account,
+      });
+
+      expect(await vault.read.convertToAssets([toBN(1000, 6)])).to.equal(
+        BigInt("666666666666000000000"),
+      );
+    });
+
+    it("Can round down in conversion from assets to shares", async function () {
+      const { vault, owner } = await loadFixture(fixtureNewVault);
+
+      await vault.write.updatePrice([toBN(6, 12)], {
+        account: owner.account,
+      });
+
+      expect(await vault.read.convertToShares([toBN(1000, 18)])).to.equal(
+        BigInt("166666666"),
+      );
+    });
+  });
+
   describe("Price management", function () {
     it("Owner can update price", async function () {
       const { vault, owner } = await loadFixture(fixtureNewVault);
@@ -209,7 +235,9 @@ describe("Vault", function () {
       expect(await vault.read.price()).to.equal(price);
       expect(await vault.read.priceUpdatedAt()).to.equal(BigInt(now));
 
-      expect(await getEmittedEvent(hash, vault.abi, "PriceUpdate")).to.deep.equal({
+      expect(
+        await getEmittedEvent(hash, vault.abi, "PriceUpdate"),
+      ).to.deep.equal({
         price,
       });
     });
@@ -314,7 +342,7 @@ describe("Vault", function () {
       const { vault, owner, user } = await loadFixture(
         fixtureWithPendingDeposit,
       );
-      await vault.write.updatePrice([BigInt(10 ** (18 - 6))], {
+      await vault.write.updatePrice([BigInt(10 ** 12)], {
         account: owner.account,
       });
       await expect(
@@ -337,7 +365,7 @@ describe("Vault", function () {
           timestamp: await time.latest(),
         },
       ]);
-      await vault.write.updatePrice([BigInt(10 ** (18 - 6))], {
+      await vault.write.updatePrice([BigInt(10 ** 12)], {
         account: owner.account,
       });
 
@@ -453,6 +481,41 @@ describe("Vault", function () {
         receiver: getAddress(user.account.address),
         owner: getAddress(user.account.address),
         assets: toBN(10_000, 6),
+        shares: toBN(10_000, 18),
+      });
+    });
+
+    it("Can process redeem with withdrawal fee", async () => {
+      const { vault, usdt, user, owner } = await loadFixture(
+        fixtureWithPendingRedeem,
+      );
+
+      // 1%
+      await vault.write.updateWithdrawalFee([BigInt(0.01 * 10 ** 6)], {
+        account: owner.account,
+      });
+
+      await usdt.write.approve([vault.address, toBN(9_900, 6)], {
+        account: owner.account,
+      });
+      const hash = await vault.write.processRedeems(
+        [BigInt(1), toBN(9_900, 6)],
+        { account: owner.account },
+      );
+
+      expect(await vault.read.pendingRedeems()).to.deep.equal([]);
+
+      expect(await vault.read.totalSupply()).to.equal(toBN(0, 18));
+
+      expect(await usdt.read.balanceOf([user.account.address])).to.equal(
+        toBN(99_900, 6),
+      );
+
+      expect(await getEmittedEvent(hash, vault.abi, "Withdraw")).to.deep.equal({
+        sender: getAddress(user.account.address),
+        receiver: getAddress(user.account.address),
+        owner: getAddress(user.account.address),
+        assets: toBN(9_900, 6),
         shares: toBN(10_000, 18),
       });
     });
