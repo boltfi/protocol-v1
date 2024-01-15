@@ -133,7 +133,7 @@ contract Vault is ERC20, Ownable, Pausable {
                 DoubleEndedQueue.popFront(_depositQueue),
                 (DepositItem)
             );
-            uint256 shares = convertToAssets(item.assets);
+            uint256 shares = convertToShares(item.assets);
             _mint(item.receiver, shares);
             total += item.assets;
             emit Deposit(item.sender, item.receiver, item.assets, shares);
@@ -152,12 +152,12 @@ contract Vault is ERC20, Ownable, Pausable {
                 DoubleEndedQueue.popFront(_redeemQueue),
                 (RedeemItem)
             );
-            uint256 assets = convertToShares(item.shares);
+            uint256 assets = convertToAssets(item.shares);
             uint256 fee = Math.mulDiv(
                 assets,
                 withdrawalFee,
                 10 ** 6,
-                Math.Rounding.Floor // ? Confirm with team if this is appropriate
+                Math.Rounding.Ceil
             );
             assets = assets - fee;
 
@@ -226,13 +226,13 @@ contract Vault is ERC20, Ownable, Pausable {
     function convertToAssets(
         uint256 shares
     ) public view virtual returns (uint256) {
-        return shares * price;
+        return shares / price;
     }
 
     function convertToShares(
         uint256 assets
     ) public view virtual returns (uint256) {
-        return assets / price;
+        return assets * price;
     }
 
     function decimals() public view virtual override(ERC20) returns (uint8) {
@@ -249,8 +249,7 @@ contract Vault is ERC20, Ownable, Pausable {
         return balanceOf(owner_);
     }
 
-    // TODO: ! This is wrong - it can become negative -- think we cannot track on-chain?
     function totalAssets() public view virtual returns (uint256) {
-        return totalAssetsDeposited - totalAssetsWithdrawn;
+        return convertToAssets(totalSupply());
     }
 }

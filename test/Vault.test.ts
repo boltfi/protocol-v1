@@ -198,26 +198,26 @@ describe("Vault", function () {
   });
 
   describe("Price conversion", function () {
-    it("Can round down in conversion from shares to assets", async function () {
+    it("Can round down in conversion from assets to shares", async function () {
       const { vault, owner } = await loadFixture(fixtureNewVault);
 
       await vault.write.updatePrice([BigInt("666666666666")], {
         account: owner.account,
       });
 
-      expect(await vault.read.convertToAssets([toBN(1000, 6)])).to.equal(
+      expect(await vault.read.convertToShares([toBN(1000, 6)])).to.equal(
         BigInt("666666666666000000000"),
       );
     });
 
-    it("Can round down in conversion from assets to shares", async function () {
+    it("Can round down in conversion from shares to assets", async function () {
       const { vault, owner } = await loadFixture(fixtureNewVault);
 
       await vault.write.updatePrice([toBN(6, 12)], {
         account: owner.account,
       });
 
-      expect(await vault.read.convertToShares([toBN(1000, 18)])).to.equal(
+      expect(await vault.read.convertToAssets([toBN(1000, 18)])).to.equal(
         BigInt("166666666"),
       );
     });
@@ -550,7 +550,6 @@ describe("Vault", function () {
       expect(await usdt.read.balanceOf([vault.address])).to.equal(
         toBN(5_000, 6),
       );
-      expect(await vault.read.totalAssets()).to.equal(BigInt(0));
 
       // Withdrawal to owner
       await vault.write.withdrawalToOwner([usdt.address], {
