@@ -75,7 +75,7 @@ describe("Vault", function () {
 
     const { vault, owner } = deployment;
 
-    await vault.write.updatePrice([BigInt(10 ** 12)], {
+    await vault.write.updatePrice([toBN(10 ** -12, 18)], {
       account: owner.account,
     });
 
@@ -198,27 +198,51 @@ describe("Vault", function () {
   });
 
   describe("Price conversion", function () {
+    it("Can convert from shares to assets", async function () {
+      const { vault, owner } = await loadFixture(fixtureNewVault);
+
+      await vault.write.updatePrice([toBN(10 ** -12, 18)], {
+        account: owner.account,
+      });
+
+      expect(await vault.read.convertToAssets([toBN(1, 18)])).to.equal(
+        toBN(1, 6)
+      );
+    });
+
+    it("Can convert from assets to shares", async function () {
+      const { vault, owner } = await loadFixture(fixtureNewVault);
+
+      await vault.write.updatePrice([toBN(10 ** -12, 18)], {
+        account: owner.account,
+      });
+
+      expect(await vault.read.convertToShares([toBN(1, 6)])).to.equal(
+        toBN(1, 18)
+      );
+    });
+
     it("Can round down in conversion from assets to shares", async function () {
       const { vault, owner } = await loadFixture(fixtureNewVault);
 
-      await vault.write.updatePrice([BigInt("666666666666")], {
+      await vault.write.updatePrice([BigInt("6")], {
         account: owner.account,
       });
 
       expect(await vault.read.convertToShares([toBN(1000, 6)])).to.equal(
-        BigInt("666666666666000000000"),
+        BigInt("166666666666666666666666666"),
       );
     });
 
     it("Can round down in conversion from shares to assets", async function () {
       const { vault, owner } = await loadFixture(fixtureNewVault);
 
-      await vault.write.updatePrice([toBN(6, 12)], {
+      await vault.write.updatePrice([toBN(6.666666 * 10 ** -12, 18)], {
         account: owner.account,
       });
 
-      expect(await vault.read.convertToAssets([toBN(1000, 18)])).to.equal(
-        BigInt("166666666"),
+      expect(await vault.read.convertToAssets([toBN(1, 18)])).to.equal(
+        BigInt("6666666"),
       );
     });
   });
@@ -226,7 +250,7 @@ describe("Vault", function () {
   describe("Price management", function () {
     it("Owner can update price", async function () {
       const { vault, owner } = await loadFixture(fixtureNewVault);
-      const price = BigInt(10 ** 6);
+      const price = toBN(10 ** -12, 18);
       const hash = await vault.write.updatePrice([price], {
         account: owner.account,
       });
@@ -245,7 +269,7 @@ describe("Vault", function () {
     it("Deployer cannot update the price", async function () {
       const { vault, deployer } = await loadFixture(fixtureNewVault);
       await expect(
-        vault.write.updatePrice([BigInt(10 ** 6)], {
+        vault.write.updatePrice([toBN(10 ** -12, 18)], {
           account: deployer.account,
         }),
       ).to.eventually.be.rejectedWith("OwnableUnauthorizedAccount");
@@ -254,7 +278,7 @@ describe("Vault", function () {
     it("Users cannot update the price", async function () {
       const { vault, user } = await loadFixture(fixtureNewVault);
       await expect(
-        vault.write.updatePrice([BigInt(10 ** 6)], {
+        vault.write.updatePrice([toBN(10 ** -12, 18)], {
           account: user.account,
         }),
       ).to.eventually.be.rejectedWith("OwnableUnauthorizedAccount");
@@ -290,7 +314,7 @@ describe("Vault", function () {
     });
   });
 
-  const toBN = (n: number, decimals = 6) => BigInt(n) * BigInt(10 ** decimals);
+  const toBN = (n: number, decimals = 6) => BigInt(n * 10 ** decimals);
 
   describe("Deposit", function () {
     it("Can queue user deposit", async function () {
@@ -342,7 +366,7 @@ describe("Vault", function () {
       const { vault, owner, user } = await loadFixture(
         fixtureWithPendingDeposit,
       );
-      await vault.write.updatePrice([BigInt(10 ** 12)], {
+      await vault.write.updatePrice([toBN(10 ** -12, 18)], {
         account: owner.account,
       });
       await expect(
@@ -365,7 +389,7 @@ describe("Vault", function () {
           timestamp: await time.latest(),
         },
       ]);
-      await vault.write.updatePrice([BigInt(10 ** 12)], {
+      await vault.write.updatePrice([toBN(10 ** -12, 18)], {
         account: owner.account,
       });
 
@@ -378,8 +402,8 @@ describe("Vault", function () {
 
       expect(await vault.read.pendingDeposits()).to.deep.equal([]);
 
-      expect(await vault.read.totalAssets()).to.equal(toBN(10_000, 6));
       expect(await vault.read.totalSupply()).to.equal(toBN(10_000, 18));
+      expect(await vault.read.totalAssets()).to.equal(toBN(10_000, 6));
 
       expect(await vault.read.balanceOf([user.account.address])).to.equal(
         toBN(10_000, 18),

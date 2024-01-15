@@ -9,6 +9,8 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {DoubleEndedQueue} from "./libraries/DoubleEndedQueue.sol";
 
 contract Vault is ERC20, Ownable, Pausable {
+    uint256 public constant PRICE_DECIMALS = 18;
+    uint256 public constant FEE_DECIMALS = 6;
     IERC20 private immutable _asset;
 
     uint256 public price;
@@ -156,7 +158,7 @@ contract Vault is ERC20, Ownable, Pausable {
             uint256 fee = Math.mulDiv(
                 assets,
                 withdrawalFee,
-                10 ** 6,
+                10 ** FEE_DECIMALS,
                 Math.Rounding.Ceil
             );
             assets = assets - fee;
@@ -226,13 +228,25 @@ contract Vault is ERC20, Ownable, Pausable {
     function convertToAssets(
         uint256 shares
     ) public view virtual returns (uint256) {
-        return shares / price;
+        return
+            Math.mulDiv(
+                shares,
+                price,
+                10 ** PRICE_DECIMALS,
+                Math.Rounding.Floor
+            );
     }
 
     function convertToShares(
         uint256 assets
     ) public view virtual returns (uint256) {
-        return assets * price;
+        return
+            Math.mulDiv(
+                assets,
+                10 ** PRICE_DECIMALS,
+                price,
+                Math.Rounding.Floor
+            );
     }
 
     function decimals() public view virtual override(ERC20) returns (uint8) {
