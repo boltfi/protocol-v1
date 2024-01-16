@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC20, ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC20, IERC20Metadata, ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
@@ -11,6 +11,7 @@ import {DoubleEndedQueue} from "./libraries/DoubleEndedQueue.sol";
 contract Vault is ERC20, Ownable, Pausable {
     uint256 public constant PRICE_DECIMALS = 18;
     uint256 public constant FEE_DECIMALS = 6;
+    uint8 private immutable _decimals;
     IERC20 private immutable _asset;
 
     uint256 public price;
@@ -72,6 +73,9 @@ contract Vault is ERC20, Ownable, Pausable {
         address owner_
     ) ERC20(name_, symbol_) Ownable(owner_) {
         _asset = asset_;
+
+        (bool success, uint8 assetDecimals) = _tryGetAssetDecimals(asset_);
+        _decimals = success ? assetDecimals : 18;
     }
 
     // External User Functions
@@ -101,12 +105,17 @@ contract Vault is ERC20, Ownable, Pausable {
             revert ERC4626ExceededMaxRedeem(owner_, shares, maxShares);
         }
 
+        address caller = _msgSender();
+        if (caller != owner_) {
+            _spendAllowance(owner_, caller, shares);
+        }
+
         // Hold the shares in the contract, and burn them later when processed
         // This blocks users from transfering shares while in the queue
-        _transfer(_msgSender(), address(this), shares);
+        _transfer(owner_, address(this), shares);
 
         RedeemItem memory item = RedeemItem(
-            _msgSender(),
+            caller,
             owner_,
             receiver,
             shares,
@@ -250,7 +259,7 @@ contract Vault is ERC20, Ownable, Pausable {
     }
 
     function decimals() public view virtual override(ERC20) returns (uint8) {
-        return 18;
+        return _decimals;
     }
 
     function maxDeposit(address) public view virtual returns (uint256) {
@@ -265,5 +274,24 @@ contract Vault is ERC20, Ownable, Pausable {
 
     function totalAssets() public view virtual returns (uint256) {
         return convertToAssets(totalSupply());
+    }
+
+    // Internal functions
+    /**
+     * @dev Attempts to fetch the asset decimals. A return value of false indicates that the attempt failed in some way.
+     *  Taken from Openzepplin ERC4626
+     */
+    function _tryGetAssetDecimals(
+        IERC20 asset_
+    ) private view returns (bool, uint8) {
+        (bool success, bytes memory encodedDecimals) = address(asset_)
+            .staticcall(abi.encodeCall(IERC20Metadata.decimals, ()));
+        if (success && encodedDecimals.length >= 32) {
+            uint256 returnedDecimals = abi.decode(encodedDecimals, (uint256));
+            if (returnedDecimals <= type(uint8).max) {
+                return (true, uint8(returnedDecimals));
+            }
+        }
+        return (false, 0);
     }
 }
