@@ -2,19 +2,28 @@
 pragma solidity ^0.8.20;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC20, IERC20Metadata, ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {DoubleEndedQueue} from "./libraries/DoubleEndedQueue.sol";
 
-contract Vault is ERC20, Ownable, Pausable {
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
+contract Vault is
+    ERC20Upgradeable,
+    OwnableUpgradeable,
+    PausableUpgradeable,
+    UUPSUpgradeable
+{
     uint256 public constant PRICE_DECIMALS = 18;
     uint256 public constant FEE_DECIMALS = 6;
-    IERC20 private immutable _asset;
-    uint8 private immutable _decimals;
+    IERC20 private _asset;
+    uint8 private _decimals;
 
-    uint32 public immutable createdAt;
+    uint32 public createdAt;
     uint32 public priceUpdatedAt;
     uint256 public price;
     uint256 public withdrawalFee;
@@ -65,12 +74,16 @@ contract Vault is ERC20, Ownable, Pausable {
      */
     error ERC4626ExceededMaxRedeem(address owner, uint256 shares, uint256 max);
 
-    constructor(
+    function initialize(
         string memory name_,
         string memory symbol_,
         IERC20 asset_,
         address owner_
-    ) ERC20(name_, symbol_) Ownable(owner_) {
+    ) public initializer {
+        ERC20Upgradeable.__ERC20_init(name_, symbol_);
+        OwnableUpgradeable.__Ownable_init(owner_);
+        PausableUpgradeable.__Pausable_init();
+
         _asset = asset_;
 
         (bool success, uint8 assetDecimals) = _tryGetAssetDecimals(asset_);
@@ -288,7 +301,13 @@ contract Vault is ERC20, Ownable, Pausable {
             );
     }
 
-    function decimals() public view virtual override(ERC20) returns (uint8) {
+    function decimals()
+        public
+        view
+        virtual
+        override(ERC20Upgradeable)
+        returns (uint8)
+    {
         return _decimals;
     }
 
@@ -343,4 +362,9 @@ contract Vault is ERC20, Ownable, Pausable {
         }
         return (false, 0);
     }
+
+    ///@dev required by the OZ UUPS module
+    function _authorizeUpgrade(
+        address
+    ) internal override(UUPSUpgradeable) onlyOwner {}
 }

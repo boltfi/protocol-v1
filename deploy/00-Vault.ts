@@ -6,19 +6,33 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deploy } = deployments;
 
   const { deployer } = await getNamedAccounts();
+  const [, owner] = await hre.viem.getWalletClients();
+
+  const asset = await deployments.get("MockUSDT");
 
   await deploy("Vault", {
     from: deployer,
-    args: [
-      "Vault",
-      "BLT",
-      "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-      deployer,
-    ],
+    proxy: {
+      proxyContract: 'UUPS',
+      // proxyArgs: ['{implementation}', '{data}'],
+      execute: {
+        init: {
+          methodName: 'initialize',
+          args: [
+            "Vault",
+            "BLT",
+            asset.address,
+            owner.account.address,
+          ],
+        },
+      }
+    },
     log: true,
   });
 };
 
 func.tags = ["Vault"];
+func.dependencies = ['MockUSDT']; // this ensure the Token script above is executed first, so `deployments.get('Token')` succeeds
+
 
 export default func;

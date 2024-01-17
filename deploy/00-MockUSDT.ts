@@ -6,7 +6,7 @@ const func: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  await deploy(`USDT`, {
+  await deploy('MockUSDT', {
     args: [],
     contract: "MockUSDT",
     from: deployer,
@@ -14,7 +14,6 @@ const func: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
   });
 };
 
-func.tags = ["USDT"];
 
 // Only deploy locally
 func.skip = async (hre: HardhatRuntimeEnvironment) => {
@@ -25,4 +24,5 @@ func.skip = async (hre: HardhatRuntimeEnvironment) => {
   return true;
 };
 
+func.tags = ["MockUSDT"];
 export default func;

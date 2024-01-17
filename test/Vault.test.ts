@@ -4,7 +4,7 @@ import {
 } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import chai, { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
-import hre from "hardhat";
+import hre, { deployments } from "hardhat";
 import { decodeEventLog, getAddress } from "viem";
 
 // TODO:- Add test for only processing 1 deposit in queue
@@ -30,8 +30,28 @@ async function getEmittedEvent(
 async function fixtureNewVault() {
   const [deployer, owner, userA, userB, userC] = await hre.viem.getWalletClients();
 
+  const { MockUSDT, Vault } = await deployments.fixture(["Vault"]);
 
-  const usdt = await hre.viem.deployContract("MockUSDT");
+  const usdt = await hre.viem.getContractAt("MockUSDT", getAddress(MockUSDT.address));
+  const vault = await hre.viem.getContractAt("Vault", getAddress(Vault.address));
+
+  return {
+    vault,
+    deployer,
+    usdt,
+    owner,
+    userA,
+    userB,
+    userC
+  };
+}
+
+async function fixtureVaultAndUsers() {
+  const deployment = await loadFixture(fixtureNewVault);
+
+  const { usdt, userA, userB, userC } = deployment;
+
+
   await usdt.write.mint([
     userA.account.address,
     BigInt(100_000) * BigInt(10 ** 6),
@@ -45,30 +65,13 @@ async function fixtureNewVault() {
     BigInt(100_000) * BigInt(10 ** 6),
   ]);
 
-  // Vault deployed is last transaction so timestamps can be tested
-  const vault = await hre.viem.deployContract("Vault", [
-    "Vault",
-    "BLT",
-    usdt.address,
-    owner.account.address,
-  ]);
-
-
-
-  return {
-    vault,
-    deployer,
-    userA,
-    userB,
-    userC,
-    usdt,
-    owner: owner,
-  };
+  return deployment;
 }
 
 async function fixtureWithPendingDeposit() {
-  const deployment = await loadFixture(fixtureNewVault);
+  const deployment = await loadFixture(fixtureVaultAndUsers);
   const { vault, userA, usdt } = deployment;
+
 
   // Add some time
   await time.increase(2 * ONE_DAY);
@@ -349,7 +352,7 @@ describe("Vault Unit tests", function () {
     });
 
     it("Can queue user deposit", async function () {
-      const { vault, usdt, userA, owner } = await loadFixture(fixtureNewVault);
+      const { vault, usdt, userA, owner } = await loadFixture(fixtureVaultAndUsers);
 
       expect(await usdt.read.balanceOf([userA.account.address])).to.equal(
         toBN(100_000, 6),
@@ -638,7 +641,7 @@ describe("Vault Unit tests", function () {
 
   describe("Vault withdrawalToOwner", function () {
     it("Can reject ETH transfers", async function () {
-      const { vault, userA } = await loadFixture(fixtureNewVault);
+      const { vault, userA } = await loadFixture(fixtureVaultAndUsers);
 
       await expect(
         userA.sendTransaction({
@@ -651,7 +654,7 @@ describe("Vault Unit tests", function () {
     });
 
     it("Should allow withdrawal to owner for USDT", async function () {
-      const { vault, owner, usdt, userA } = await loadFixture(fixtureNewVault);
+      const { vault, owner, usdt, userA } = await loadFixture(fixtureVaultAndUsers);
 
       expect(await usdt.read.balanceOf([owner.account.address])).to.equal(
         BigInt(0),
@@ -683,7 +686,7 @@ const ONE_DAY = 24 * 60 * 60 * 1000;
 
 describe("Vault Integration Tests", function () {
   it("Can deposit on behalf of another user", async function () {
-    const { vault, usdt, owner, userA, userB } = await loadFixture(fixtureNewVault);
+    const { vault, usdt, owner, userA, userB } = await loadFixture(fixtureVaultAndUsers);
 
     // User A deposits 10_000 USDT for User B
     await usdt.write.approve([vault.address, toBN(10_000, 6)], {
@@ -738,7 +741,7 @@ describe("Vault Integration Tests", function () {
   });
 
   it("Profitable vault", async function () {
-    const { vault, usdt, owner, userA, userB } = await loadFixture(fixtureNewVault);
+    const { vault, usdt, owner, userA, userB } = await loadFixture(fixtureVaultAndUsers);
     await vault.write.updateWithdrawalFee([BigInt(0.01 * 10 ** 6)], {
       account: owner.account,
     });
