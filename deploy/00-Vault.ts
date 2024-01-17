@@ -2,37 +2,41 @@ import { DeployFunction } from "hardhat-deploy/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, getNamedAccounts } = hre;
-  const { deploy } = deployments;
+  const { deployments, getNamedAccounts, network } = hre;
+  const { deploy, catchUnknownSigner } = deployments;
 
-  const { deployer } = await getNamedAccounts();
-  const [, owner] = await hre.viem.getWalletClients();
+  const { deployer, usdt, owner } = await getNamedAccounts();
 
-  const asset = await deployments.get("MockUSDT");
+  const asset = network.live
+    ? usdt
+    : (await deployments.get("MockUSDT")).address;
 
-  await deploy("Vault", {
-    from: deployer,
-    proxy: {
-      proxyContract: 'UUPS',
-      // proxyArgs: ['{implementation}', '{data}'],
-      execute: {
-        init: {
-          methodName: 'initialize',
-          args: [
-            "Vault",
-            "BLT",
-            asset.address,
-            owner.account.address,
-          ],
+  const args = [
+    "Vault", // Name
+    "BLT", // Symbol
+    asset, // Asset,
+    owner, // Owner
+  ];
+  // We don't have the owner key, need to do manually
+  await catchUnknownSigner(
+    deploy("Vault", {
+      from: deployer,
+      proxy: {
+        proxyContract: "UUPS",
+        owner,
+        execute: {
+          init: {
+            methodName: "initialize",
+            args,
+          },
         },
-      }
-    },
-    log: true,
-  });
+      },
+      log: true,
+    }),
+  );
 };
 
 func.tags = ["Vault"];
-func.dependencies = ['MockUSDT']; // this ensure the Token script above is executed first, so `deployments.get('Token')` succeeds
-
+func.dependencies = ["MockUSDT"]; // this ensure the Token script above is executed first, so `deployments.get('Token')` succeeds
 
 export default func;

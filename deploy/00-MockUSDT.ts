@@ -16,13 +16,7 @@ const func: DeployFunction = async (hre: HardhatRuntimeEnvironment) => {
 
 
 // Only deploy locally
-func.skip = async (hre: HardhatRuntimeEnvironment) => {
-  const network = hre.network.name;
-  if (["localhost", "hardhat"].includes(network)) {
-    return false;
-  }
-  return true;
-};
+func.skip = async ({ network }) => network.live
 
 func.tags = ["MockUSDT"];
 export default func;
