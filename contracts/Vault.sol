@@ -11,11 +11,13 @@ import {DoubleEndedQueue} from "./libraries/DoubleEndedQueue.sol";
 contract Vault is ERC20, Ownable, Pausable {
     uint256 public constant PRICE_DECIMALS = 18;
     uint256 public constant FEE_DECIMALS = 6;
-    uint8 private immutable _decimals;
     IERC20 private immutable _asset;
+    uint8 private immutable _decimals;
 
+    // ? Should these be exposed via functions instead?
+    uint32 public immutable createdAt;
+    uint32 public priceUpdatedAt;
     uint256 public price;
-    uint256 public priceUpdatedAt;
     uint256 public withdrawalFee;
     uint256 public totalAssetsDeposited;
     uint256 public totalAssetsWithdrawn;
@@ -76,6 +78,10 @@ contract Vault is ERC20, Ownable, Pausable {
 
         (bool success, uint8 assetDecimals) = _tryGetAssetDecimals(asset_);
         _decimals = success ? assetDecimals : 18;
+
+        price = 10 ** PRICE_DECIMALS;
+        priceUpdatedAt = uint32(block.timestamp);
+        createdAt = uint32(block.timestamp);
     }
 
     // External User Functions
@@ -126,13 +132,29 @@ contract Vault is ERC20, Ownable, Pausable {
 
     // External owner functions
     function updatePrice(uint256 newPrice) external onlyOwner {
+        require(newPrice > 0, "Price must be greater than 0");
         price = newPrice;
-        priceUpdatedAt = block.timestamp;
+        priceUpdatedAt = uint32(block.timestamp);
         emit PriceUpdate(newPrice);
     }
 
     function updateWithdrawalFee(uint256 withdrawalFee_) external onlyOwner {
         withdrawalFee = withdrawalFee_;
+    }
+
+    function previewProcessDeposits(
+        uint128 number
+    ) external view onlyUpdatedPrice returns (uint256 assets, uint256 shares) {
+        for (uint128 i = 0; i < number; i++) {
+            DepositItem memory item = abi.decode(
+                DoubleEndedQueue.at(_depositQueue, i),
+                (DepositItem)
+            );
+            assets += item.assets;
+        }
+
+        shares = convertToShares(assets);
+        return (assets, shares);
     }
 
     function processDeposits(
@@ -150,6 +172,27 @@ contract Vault is ERC20, Ownable, Pausable {
             emit Deposit(item.sender, item.receiver, item.assets, shares);
         }
         totalAssetsDeposited += total;
+    }
+
+    function previewProcessRedeems(
+        uint128 number
+    )
+        external
+        view
+        onlyUpdatedPrice
+        returns (uint256 assets, uint256 shares, uint256 fee)
+    {
+        for (uint256 i = 0; i < number; i++) {
+            RedeemItem memory item = abi.decode(
+                DoubleEndedQueue.at(_redeemQueue, i),
+                (RedeemItem)
+            );
+            shares += item.shares;
+        }
+
+        assets = previewRedeem(shares);
+        fee = convertToAssets(shares) - assets;
+        return (assets, shares, fee);
     }
 
     function processRedeems(
@@ -270,6 +313,25 @@ contract Vault is ERC20, Ownable, Pausable {
     // Owner is the owner of the shares 4626 terminalogy
     function maxRedeem(address owner_) public view virtual returns (uint256) {
         return balanceOf(owner_);
+    }
+
+    function previewDeposit(
+        uint256 assets
+    ) public view virtual returns (uint256) {
+        return convertToShares(assets);
+    }
+
+    function previewRedeem(
+        uint256 shares
+    ) public view virtual returns (uint256) {
+        uint256 assets = convertToAssets(shares);
+        uint256 fee = Math.mulDiv(
+            assets,
+            withdrawalFee,
+            10 ** FEE_DECIMALS,
+            Math.Rounding.Ceil
+        );
+        return assets - fee;
     }
 
     function totalAssets() public view virtual returns (uint256) {

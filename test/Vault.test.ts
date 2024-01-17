@@ -32,13 +32,6 @@ async function fixtureNewVault() {
 
 
   const usdt = await hre.viem.deployContract("MockUSDT");
-  const vault = await hre.viem.deployContract("Vault", [
-    "Vault",
-    "BLT",
-    usdt.address,
-    owner.account.address,
-  ]);
-
   await usdt.write.mint([
     userA.account.address,
     BigInt(100_000) * BigInt(10 ** 6),
@@ -51,6 +44,16 @@ async function fixtureNewVault() {
     userC.account.address,
     BigInt(100_000) * BigInt(10 ** 6),
   ]);
+
+  // Vault deployed is last transaction so timestamps can be tested
+  const vault = await hre.viem.deployContract("Vault", [
+    "Vault",
+    "BLT",
+    usdt.address,
+    owner.account.address,
+  ]);
+
+
 
   return {
     vault,
@@ -65,8 +68,10 @@ async function fixtureNewVault() {
 
 async function fixtureWithPendingDeposit() {
   const deployment = await loadFixture(fixtureNewVault);
+  const { vault, userA, usdt } = deployment;
 
-  const { vault, userA, usdt } = await loadFixture(fixtureNewVault);
+  // Add some time
+  await time.increase(2 * ONE_DAY);
 
   await usdt.write.approve([vault.address, toBN(10_000, 6)], {
     account: userA.account,
@@ -81,6 +86,7 @@ async function fixtureWithPendingDeposit() {
 
 async function fixtureWithDeposit() {
   const deployment = await loadFixture(fixtureWithPendingDeposit);
+
 
   const { vault, owner } = deployment;
 
@@ -140,15 +146,14 @@ describe("Vault Unit tests", function () {
 
     it("Sets the correct initial price", async function () {
       const { vault } = await loadFixture(fixtureNewVault);
-      expect(await vault.read.price()).to.equal(BigInt(0));
-      expect(await vault.read.priceUpdatedAt()).to.equal(BigInt(0));
+      expect(await vault.read.price()).to.equal(toBN(1, 18));
+      expect(await vault.read.priceUpdatedAt()).to.equal(await time.latest());
     });
 
     it("Sets the correct initial withdrawal fee", async function () {
       const { vault } = await loadFixture(fixtureNewVault);
       expect(await vault.read.withdrawalFee()).to.equal(BigInt(0));
     });
-
   });
 
   describe("Ownership", function () {
@@ -177,6 +182,7 @@ describe("Vault Unit tests", function () {
       );
     });
   });
+
   describe("Pauseable", function () {
     it("Rejects being paused paused by user", async function () {
       const { vault, userA } = await loadFixture(fixtureNewVault);
@@ -192,6 +198,7 @@ describe("Vault Unit tests", function () {
       await vault.write.pause({ account: owner.account });
       expect(await vault.read.paused()).to.equal(true);
     });
+
     it("Can rejects user actions when paused", async function () {
       const { vault, owner, userA } = await loadFixture(fixtureNewVault);
       await vault.write.pause({ account: owner.account });
@@ -276,7 +283,7 @@ describe("Vault Unit tests", function () {
 
       const now = await time.latest();
       expect(await vault.read.price()).to.equal(price);
-      expect(await vault.read.priceUpdatedAt()).to.equal(BigInt(now));
+      expect(await vault.read.priceUpdatedAt()).to.equal(now);
 
       expect(
         await getEmittedEvent(hash, vault.abi, "PriceUpdate"),
@@ -335,6 +342,12 @@ describe("Vault Unit tests", function () {
 
 
   describe("Deposit", function () {
+    it("Can previewDeposit", async function () {
+      const { vault, owner } = await loadFixture(fixtureNewVault);
+      expect(await vault.read.previewDeposit([toBN(10_000, 6)])).to.equal(toBN(10_000, 6));
+
+    });
+
     it("Can queue user deposit", async function () {
       const { vault, usdt, userA, owner } = await loadFixture(fixtureNewVault);
 
@@ -397,6 +410,21 @@ describe("Vault Unit tests", function () {
       ).to.eventually.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
+    it("Can preview process deposits", async function () {
+      const { vault, owner } = await loadFixture(
+        fixtureWithPendingDeposit,
+      );
+
+      const queue = await vault.read.pendingDeposits()
+      await vault.write.updatePrice([toBN(1.25, 18)], {
+        account: owner.account,
+      });
+
+      expect(await vault.read.previewProcessDeposits([BigInt(1)])).to.deep.equal([toBN(10_000, 6), toBN(8_000, 6)]);
+
+      expect(await vault.read.pendingDeposits()).to.deep.equal(queue);
+    });
+
     it("Can process queued deposits", async function () {
       const { vault, usdt, userA, owner } = await loadFixture(
         fixtureWithPendingDeposit,
@@ -440,6 +468,19 @@ describe("Vault Unit tests", function () {
   });
 
   describe("Redeem", function () {
+    it("Can preview Redeem with no withdrawal fee", async function () {
+      const { vault } = await loadFixture(fixtureNewVault);
+      expect(await vault.read.previewRedeem([toBN(10_000, 6)])).to.equal(toBN(10_000, 6));
+    });
+
+    it("Can preview Redeem with withdrawal fee", async function () {
+      const { vault, owner } = await loadFixture(fixtureNewVault);
+      await vault.write.updateWithdrawalFee([BigInt(0.01 * 10 ** 6)], {
+        account: owner.account,
+      });
+      expect(await vault.read.previewRedeem([toBN(10_000, 6)])).to.equal(toBN(9_900, 6));
+    });
+
     it("Can queue user redeem", async function () {
       const { vault, usdt, userA } = await loadFixture(fixtureWithDeposit);
 
@@ -480,6 +521,34 @@ describe("Vault Unit tests", function () {
           timestamp: await time.latest(),
         },
       ]);
+    });
+
+    it("Can preview process redeem with no withdrawal fee", async () => {
+      const { vault, usdt, userA, owner } = await loadFixture(
+        fixtureWithPendingRedeem,
+      );
+      const queue = await vault.read.pendingRedeems()
+
+      expect(await vault.read.previewProcessRedeems([BigInt(1)])).to.deep.equal([toBN(10_000, 6), toBN(8_000, 6), toBN(0, 6)]);
+
+      // Queue is unchanged
+      expect(await vault.read.pendingRedeems()).to.deep.equal(queue);
+    });
+
+    it("Can preview process redeem with withdrawal fee", async () => {
+      const { vault, owner } = await loadFixture(
+        fixtureWithPendingRedeem,
+      );
+      const queue = await vault.read.pendingRedeems()
+
+      await vault.write.updateWithdrawalFee([BigInt(0.01 * 10 ** 6)], {
+        account: owner.account,
+      });
+
+      expect(await vault.read.previewProcessRedeems([BigInt(1)])).to.deep.equal([toBN(9_900, 6), toBN(8_000, 6), toBN(100, 6)]);
+
+      // Queue is unchanged
+      expect(await vault.read.pendingRedeems()).to.deep.equal(queue);
     });
 
     it("Can process redeem", async () => {
