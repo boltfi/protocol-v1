@@ -14,13 +14,10 @@ contract Vault is ERC20, Ownable, Pausable {
     IERC20 private immutable _asset;
     uint8 private immutable _decimals;
 
-    // ? Should these be exposed via functions instead?
     uint32 public immutable createdAt;
     uint32 public priceUpdatedAt;
     uint256 public price;
     uint256 public withdrawalFee;
-    uint256 public totalAssetsDeposited;
-    uint256 public totalAssetsWithdrawn;
 
     DoubleEndedQueue.BytesDeque private _depositQueue;
     DoubleEndedQueue.BytesDeque private _redeemQueue;
@@ -160,7 +157,6 @@ contract Vault is ERC20, Ownable, Pausable {
     function processDeposits(
         uint128 number
     ) external onlyOwner onlyUpdatedPrice {
-        uint256 total = 0; // Local variable for gas optimization
         for (uint128 i = 0; i < number; i++) {
             DepositItem memory item = abi.decode(
                 DoubleEndedQueue.popFront(_depositQueue),
@@ -168,10 +164,8 @@ contract Vault is ERC20, Ownable, Pausable {
             );
             uint256 shares = convertToShares(item.assets);
             _mint(item.receiver, shares);
-            total += item.assets;
             emit Deposit(item.sender, item.receiver, item.assets, shares);
         }
-        totalAssetsDeposited += total;
     }
 
     function previewProcessRedeems(
@@ -206,14 +200,8 @@ contract Vault is ERC20, Ownable, Pausable {
                 DoubleEndedQueue.popFront(_redeemQueue),
                 (RedeemItem)
             );
-            uint256 assets = convertToAssets(item.shares);
-            uint256 fee = Math.mulDiv(
-                assets,
-                withdrawalFee,
-                10 ** FEE_DECIMALS,
-                Math.Rounding.Ceil
-            );
-            assets = assets - fee;
+
+            uint256 assets = previewRedeem(item.shares);
 
             // Burn the shares locked in the contract pending redeem
             _burn(address(this), item.shares);
@@ -229,7 +217,6 @@ contract Vault is ERC20, Ownable, Pausable {
 
         // Expect all the assets to be spent
         require(_asset.balanceOf(address(this)) == 0, "Incorrect amount given");
-        totalAssetsWithdrawn += total;
     }
 
     function pause() external onlyOwner {

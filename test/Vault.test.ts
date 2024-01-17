@@ -741,12 +741,13 @@ describe("Vault Integration Tests", function () {
     const { vault, usdt, owner, userA, userB } = await loadFixture(fixtureNewVault);
     await vault.write.updateWithdrawalFee([BigInt(0.01 * 10 ** 6)], {
       account: owner.account,
-    }),
+    });
 
-      // User A deposits 10_000 USDT
-      await usdt.write.approve([vault.address, toBN(10_000, 6)], {
-        account: userA.account,
-      });
+    // User A deposits 10_000 USDT
+    await usdt.write.approve([vault.address, toBN(10_000, 6)], {
+      account: userA.account,
+    });
+
     await vault.write.deposit([toBN(10_000, 6), userA.account.address], { account: userA.account })
 
     expect(await usdt.read.balanceOf([userA.account.address])).to.equal(toBN(90_000, 6));
