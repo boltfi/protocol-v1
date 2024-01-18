@@ -232,6 +232,15 @@ contract Vault is
         require(_asset.balanceOf(address(this)) == 0, "Incorrect amount given");
     }
 
+    function revertFrontRedeem() external onlyOwner {
+        RedeemItem memory item = abi.decode(
+            DoubleEndedQueue.popFront(_redeemQueue),
+            (RedeemItem)
+        );
+        // Transfer shares back previously locked in the contract pending redeem
+        _transfer(address(this), item.owner, item.shares);
+    }
+
     function pause() external onlyOwner {
         _pause();
     }

@@ -196,7 +196,7 @@ describe("Vault Unit tests", function () {
     });
   });
 
-  describe("Ownership", function () {
+  describe("Ownership features", function () {
     it("Can change owner", async function () {
       const { vault, owner, userA } = await loadFixture(fixtureNewVault);
       await vault.write.transferOwnership([userA.account.address], {
@@ -223,7 +223,7 @@ describe("Vault Unit tests", function () {
     });
   });
 
-  describe("Pauseable", function () {
+  describe("Pauseable features", function () {
     it("Rejects being paused paused by user", async function () {
       const { vault, userA } = await loadFixture(fixtureNewVault);
       expect(await vault.read.paused()).to.equal(false);
@@ -559,7 +559,7 @@ describe("Vault Unit tests", function () {
     });
   });
 
-  describe("Redeem", function () {
+  describe("previewRedeem function", function () {
     it("Can preview Redeem with no withdrawal fee", async function () {
       const { vault } = await loadFixture(fixtureNewVault);
       expect(await vault.read.previewRedeem([toBN(10_000, 6)])).to.equal(
@@ -576,7 +576,9 @@ describe("Vault Unit tests", function () {
         toBN(9_900, 6),
       );
     });
+  });
 
+  describe("redeem function", function () {
     it("Can queue user redeem", async function () {
       const { vault, usdt, userA } = await loadFixture(fixtureWithDeposit);
 
@@ -618,7 +620,9 @@ describe("Vault Unit tests", function () {
         },
       ]);
     });
+  });
 
+  describe("preview process redeem function", function () {
     it("Can preview process redeem with no withdrawal fee", async () => {
       const { vault, usdt, userA, owner } = await loadFixture(
         fixtureWithPendingRedeem,
@@ -648,7 +652,9 @@ describe("Vault Unit tests", function () {
       // Queue is unchanged
       expect(await vault.read.pendingRedeems()).to.deep.equal(queue);
     });
+  });
 
+  describe("process redeem function", function () {
     it("Can process redeem", async () => {
       const { vault, usdt, userA, owner } = await loadFixture(
         fixtureWithPendingRedeem,
@@ -806,6 +812,65 @@ describe("Vault Unit tests", function () {
         assets: toBN(9_900, 6),
         shares: toBN(8_000, 6),
       });
+    });
+  });
+
+  describe("revert redeem function", function () {
+    it("Can reject if called by non-owner", async () => {
+      const { vault, usdt, userA, owner } = await loadFixture(
+        fixtureWithPendingRedeem,
+      );
+
+      await expect(
+        vault.write.processRedeems([BigInt(1), toBN(750, 6)], {
+          account: userA.account,
+        }),
+      ).to.eventually.be.rejectedWith("OwnableUnauthorizedAccount");
+    });
+
+    it("Can revert redeem", async () => {
+      const { vault, usdt, userA, owner } = await loadFixture(
+        fixtureWithPendingRedeem,
+      );
+
+      expect(await usdt.read.balanceOf([owner.account.address])).to.equal(
+        toBN(10_000, 6),
+      );
+      expect(await usdt.read.balanceOf([userA.account.address])).to.equal(
+        toBN(90_000, 6),
+      );
+      expect(await vault.read.balanceOf([vault.address])).to.equal(
+        toBN(8_000, 6),
+      );
+      expect(await vault.read.balanceOf([userA.account.address])).to.equal(
+        toBN(0, 6),
+      );
+
+      expect(await vault.read.pendingRedeems()).to.deep.equal([
+        {
+          caller: getAddress(userA.account.address),
+          owner: getAddress(userA.account.address),
+          receiver: getAddress(userA.account.address),
+          shares: toBN(8_000, 6),
+          timestamp: await time.latest(),
+        },
+      ]);
+      expect(await vault.read.totalAssets()).to.equal(toBN(10_000, 6));
+      expect(await vault.read.totalSupply()).to.equal(toBN(8_000, 6));
+
+      const hash = await vault.write.revertFrontRedeem({
+        account: owner.account,
+      });
+
+      expect(await vault.read.pendingRedeems()).to.deep.equal([]);
+
+      expect(await vault.read.totalAssets()).to.equal(toBN(10_000, 6));
+      expect(await vault.read.totalSupply()).to.equal(toBN(8_000, 6));
+
+      expect(await vault.read.balanceOf([vault.address])).to.equal(toBN(0, 6));
+      expect(await vault.read.balanceOf([userA.account.address])).to.equal(
+        toBN(8_000, 6),
+      );
     });
   });
 
