@@ -92,11 +92,4 @@ library DoubleEndedQueue {
             return uint256(deque._end - deque._begin);
         }
     }
-
-    /**
-     * @dev Returns true if the queue is empty.
-     */
-    function empty(BytesDeque storage deque) internal view returns (bool) {
-        return deque._end == deque._begin;
-    }
 }

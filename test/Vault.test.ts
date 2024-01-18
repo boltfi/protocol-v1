@@ -355,10 +355,15 @@ describe("Vault Unit tests", function () {
     it("Owner can update withdrawal fee", async function () {
       const { vault, owner } = await loadFixture(fixtureNewVault);
       const withdrawalFee = BigInt(10 ** 6);
-      await vault.write.updateWithdrawalFee([withdrawalFee], {
+      const hash = await vault.write.updateWithdrawalFee([withdrawalFee], {
         account: owner.account,
       });
       expect(await vault.read.withdrawalFee()).to.equal(withdrawalFee);
+      expect(
+        await getEmittedEvent(hash, vault.abi, "WithdrawalFeeUpdate"),
+      ).to.deep.equal({
+        withdrawalFee,
+      });
     });
 
     it("Deployer cannot update the withdrawal fee", async function () {

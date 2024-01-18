@@ -7,9 +7,9 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {DoubleEndedQueue} from "./libraries/DoubleEndedQueue.sol";
 
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import {ERC20PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PausableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
@@ -27,11 +27,13 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
  *         4. The owner processes the redeem, sending the assets to the user and burning the shares using the `processRedeems` function.
  *
  * @dev This contract implements a subset of the OpenZeppelin ERC-4626 standard, and the functions are referenced accordingly.
+ * @custom:security-contact security@bolti.io
  */
 contract Vault is
+    Initializable,
     ERC20Upgradeable,
+    ERC20PausableUpgradeable,
     OwnableUpgradeable,
-    PausableUpgradeable,
     UUPSUpgradeable
 {
     uint256 public constant PRICE_DECIMALS = 18;
@@ -81,6 +83,9 @@ contract Vault is
     /// @dev Emited when price is udpated
     event PriceUpdate(uint256 price);
 
+    /// @dev Emited when withdrawal fee is udpated
+    event WithdrawalFeeUpdate(uint256 withdrawalFee);
+
     // ========== Function Modifiers
     modifier onlyUpdatedPrice() {
         require(priceUpdatedAt > block.timestamp - 1 days, "Price is outdated");
@@ -106,6 +111,11 @@ contract Vault is
     /// @dev See {IERC4626-maxRedeem}.
     error ERC4626ExceededMaxRedeem(address owner, uint256 shares, uint256 max);
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     function initialize(
         string memory name_,
         string memory symbol_,
@@ -113,8 +123,9 @@ contract Vault is
         address owner_
     ) public initializer {
         ERC20Upgradeable.__ERC20_init(name_, symbol_);
+        ERC20PausableUpgradeable.__ERC20Pausable_init();
         OwnableUpgradeable.__Ownable_init(owner_);
-        PausableUpgradeable.__Pausable_init();
+        UUPSUpgradeable.__UUPSUpgradeable_init();
 
         _asset = asset_;
 
@@ -217,15 +228,16 @@ contract Vault is
     }
 
     // =========== External Functions only for owner
-    function updatePrice(uint256 newPrice) external onlyOwner {
-        require(newPrice > 0, "Price must be greater than 0");
-        price = newPrice;
+    function updatePrice(uint256 price_) external onlyOwner {
+        require(price_ > 0, "Price must be greater than 0");
+        price = price_;
         priceUpdatedAt = uint32(block.timestamp);
-        emit PriceUpdate(newPrice);
+        emit PriceUpdate(price_);
     }
 
     function updateWithdrawalFee(uint256 withdrawalFee_) external onlyOwner {
         withdrawalFee = withdrawalFee_;
+        emit WithdrawalFeeUpdate(withdrawalFee_);
     }
 
     /// @notice Reverts the next deposit, refunding the assets to the sender
@@ -458,4 +470,13 @@ contract Vault is
     function _authorizeUpgrade(
         address
     ) internal override(UUPSUpgradeable) onlyOwner {}
+
+    // The following functions are overrides required by Solidity.
+    function _update(
+        address from,
+        address to,
+        uint256 value
+    ) internal override(ERC20Upgradeable, ERC20PausableUpgradeable) {
+        super._update(from, to, value);
+    }
 }
