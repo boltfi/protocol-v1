@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20, IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {DoubleEndedQueue} from "./libraries/DoubleEndedQueue.sol";
 
@@ -12,6 +13,21 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+/**
+ * @title Vault based on a subset of ERC-4626
+ * @notice This contract represents a vault that allows users to deposit and redeem assets at any time.
+ *         However, these actions are queued and processed by the owner at a later date.
+ *         The conversion of assets to shares and vice versa is based on the price at the time of processing,
+ *         which can be updated by the owner at any time.
+ *
+ *         The expected user journey is as follows:
+ *         1. Users deposit assets into the vault using the `deposit` function.
+ *         2. The owner processes the deposit, minting shares to the user using the `processDeposits` function.
+ *         3. Users can redeem their shares for assets using the `redeem` function.
+ *         4. The owner processes the redeem, sending the assets to the user and burning the shares using the `processRedeems` function.
+ *
+ * @dev This contract implements a subset of the OpenZeppelin ERC-4626 standard, and the functions are referenced accordingly.
+ */
 contract Vault is
     ERC20Upgradeable,
     OwnableUpgradeable,
@@ -20,24 +36,41 @@ contract Vault is
 {
     uint256 public constant PRICE_DECIMALS = 18;
     uint256 public constant FEE_DECIMALS = 6;
+
+    /// @notice Underlying asset contract of the vault
+    /// @dev See {IERC4626-asset}.
     IERC20 private _asset;
-    uint8 private _decimals;
+
+    /// @notice Timestamp of when the contract was created
     uint32 public _createdAt;
 
+    /// @notice Decimals of the Vault LP Token
+    /// @dev Set to decimals of the asset if the asset is ERC20, otherwise 18. See {IERC4626-decimals}.
+    uint8 private _decimals;
+
+    /// @notice Timestamp of when the price was last updated
+    /// @dev Used to determine if the price is outdated when processing deposits and redeems
     uint32 public priceUpdatedAt;
+
+    // @dev Price of the vault in 10**18 decimals
     uint256 public price;
+
+    /// @dev 10**6 would be 100%
     uint256 public withdrawalFee;
 
+    /// @dev Modified openzepplin DoubleEndedQueue to support bytes
     DoubleEndedQueue.BytesDeque private _depositQueue;
     DoubleEndedQueue.BytesDeque private _redeemQueue;
 
-    // events
+    // ========== Events
+    /// @dev Emited when queued deposit is processed. See {IERC4626}.
     event Deposit(
         address indexed sender,
         address indexed owner,
         uint256 assets,
         uint256 shares
     );
+    /// @dev Emited when queued redeem is processed. See {IERC4626}.
     event Withdraw(
         address indexed sender,
         address indexed receiver,
@@ -45,15 +78,16 @@ contract Vault is
         uint256 assets,
         uint256 shares
     );
+    /// @dev Emited when price is udpated
     event PriceUpdate(uint256 price);
 
-    // Function modifiers
+    // ========== Function Modifiers
     modifier onlyUpdatedPrice() {
         require(priceUpdatedAt > block.timestamp - 1 days, "Price is outdated");
         _;
     }
 
-    // Structs, arrays, or enums
+    // ========== Structs, arrays, or enums
     struct DepositItem {
         address sender;
         address receiver;
@@ -68,10 +102,8 @@ contract Vault is
         uint32 timestamp;
     }
 
-    // Errors
-    /**
-     * @dev Attempted to redeem more shares than the max amount for `receiver`.
-     */
+    // ========== Errors
+    /// @dev See {IERC4626-maxRedeem}.
     error ERC4626ExceededMaxRedeem(address owner, uint256 shares, uint256 max);
 
     function initialize(
@@ -94,7 +126,8 @@ contract Vault is
         _createdAt = uint32(block.timestamp);
     }
 
-    // External User Functions
+    // =========== External Functions
+    /// @dev Follows {IERC4626-deposit}, but deposits are queued and shares are only minted later
     function deposit(
         uint256 assets,
         address receiver
@@ -111,6 +144,11 @@ contract Vault is
         DoubleEndedQueue.pushBack(_depositQueue, abi.encode(item));
     }
 
+    /**
+     *  @dev Follows {IERC4626-redeem}, shares are held in the contract and burned during processing
+     *       Shares are held in the contract to avoid user transfers while queued
+     *       Owner is not contract owner, but the owner of the shares
+     */
     function redeem(
         uint256 shares,
         address receiver,
@@ -140,18 +178,7 @@ contract Vault is
         DoubleEndedQueue.pushBack(_redeemQueue, abi.encode(item));
     }
 
-    // External owner functions
-    function updatePrice(uint256 newPrice) external onlyOwner {
-        require(newPrice > 0, "Price must be greater than 0");
-        price = newPrice;
-        priceUpdatedAt = uint32(block.timestamp);
-        emit PriceUpdate(newPrice);
-    }
-
-    function updateWithdrawalFee(uint256 withdrawalFee_) external onlyOwner {
-        withdrawalFee = withdrawalFee_;
-    }
-
+    /// @notice Previews the amount of shares that will be minted for the next `number` deposits
     function previewProcessDeposits(
         uint128 number
     ) external view onlyUpdatedPrice returns (uint256 assets, uint256 shares) {
@@ -167,35 +194,7 @@ contract Vault is
         return (assets, shares);
     }
 
-    function processDeposits(
-        uint128 number
-    ) external onlyOwner onlyUpdatedPrice {
-        for (uint128 i = 0; i < number; i++) {
-            DepositItem memory item = abi.decode(
-                DoubleEndedQueue.popFront(_depositQueue),
-                (DepositItem)
-            );
-            uint256 shares = convertToShares(item.assets);
-            _mint(item.receiver, shares);
-            emit Deposit(item.sender, item.receiver, item.assets, shares);
-        }
-    }
-
-    function revertFrontDeposit() external onlyOwner {
-        DepositItem memory item = abi.decode(
-            DoubleEndedQueue.popFront(_depositQueue),
-            (DepositItem)
-        );
-        // Transfer deposit back
-        SafeERC20.safeTransferFrom(
-            _asset,
-            _msgSender(),
-            address(this),
-            item.assets
-        );
-        SafeERC20.safeTransfer(_asset, item.sender, item.assets);
-    }
-
+    /// @notice Preview the amount of assets that will be sent, and withdrawal fee earned for the next `number` redeems
     function previewProcessRedeems(
         uint128 number
     )
@@ -217,6 +216,60 @@ contract Vault is
         return (assets, shares, fee);
     }
 
+    // =========== External Functions only for owner
+    function updatePrice(uint256 newPrice) external onlyOwner {
+        require(newPrice > 0, "Price must be greater than 0");
+        price = newPrice;
+        priceUpdatedAt = uint32(block.timestamp);
+        emit PriceUpdate(newPrice);
+    }
+
+    function updateWithdrawalFee(uint256 withdrawalFee_) external onlyOwner {
+        withdrawalFee = withdrawalFee_;
+    }
+
+    /// @notice Reverts the next deposit, refunding the assets to the sender
+    function revertFrontDeposit() external onlyOwner {
+        DepositItem memory item = abi.decode(
+            DoubleEndedQueue.popFront(_depositQueue),
+            (DepositItem)
+        );
+        // Transfer deposit back
+        SafeERC20.safeTransferFrom(
+            _asset,
+            _msgSender(),
+            address(this),
+            item.assets
+        );
+        SafeERC20.safeTransfer(_asset, item.sender, item.assets);
+    }
+
+    /// @notice Reverts the next redeem, refunding the shares to the owner
+    function revertFrontRedeem() external onlyOwner {
+        RedeemItem memory item = abi.decode(
+            DoubleEndedQueue.popFront(_redeemQueue),
+            (RedeemItem)
+        );
+        // Transfer shares back previously locked in the contract pending redeem
+        _transfer(address(this), item.owner, item.shares);
+    }
+
+    /// @notice Mints shares for the next `number` deposits
+    function processDeposits(
+        uint128 number
+    ) external onlyOwner onlyUpdatedPrice {
+        for (uint128 i = 0; i < number; i++) {
+            DepositItem memory item = abi.decode(
+                DoubleEndedQueue.popFront(_depositQueue),
+                (DepositItem)
+            );
+            uint256 shares = convertToShares(item.assets);
+            _mint(item.receiver, shares);
+            emit Deposit(item.sender, item.receiver, item.assets, shares);
+        }
+    }
+
+    /// @notice Sends assets to the receiver, and burns the shares for the next `number` redeems
     function processRedeems(
         uint128 number,
         uint256 total
@@ -247,15 +300,7 @@ contract Vault is
         require(_asset.balanceOf(address(this)) == 0, "Incorrect amount given");
     }
 
-    function revertFrontRedeem() external onlyOwner {
-        RedeemItem memory item = abi.decode(
-            DoubleEndedQueue.popFront(_redeemQueue),
-            (RedeemItem)
-        );
-        // Transfer shares back previously locked in the contract pending redeem
-        _transfer(address(this), item.owner, item.shares);
-    }
-
+    /// @dev Should pause all user actions (deposit, redeem)
     function pause() external onlyOwner {
         _pause();
     }
@@ -264,14 +309,16 @@ contract Vault is
         _unpause();
     }
 
-    /// @dev ETH can't be recieve as the contract has no fallback function
+    /// @notice Allows the owner to withdraw any ERC20 token sent to the contract outside of deposit
+    /// @dev No equivalent for ETH as it can't be recieve due to no fallback function
     function withdrawalToOwner(IERC20 token) external onlyOwner {
         uint256 balance = token.balanceOf(address(this));
         require(balance > 0, "Contract has no balance");
         require(token.transfer(owner(), balance), "Transfer failed");
     }
 
-    // External view functions
+    // =========== External Functions that are view
+    /// @notice Returns the current pending deposits in the queue
     function pendingDeposits() external view returns (DepositItem[] memory) {
         uint256 len = DoubleEndedQueue.length(_depositQueue);
         DepositItem[] memory queueItems = new DepositItem[](len);
@@ -284,6 +331,7 @@ contract Vault is
         return queueItems;
     }
 
+    /// @notice Returns the current pending redeems in the queue
     function pendingRedeems() external view returns (RedeemItem[] memory) {
         uint256 len = DoubleEndedQueue.length(_redeemQueue);
         RedeemItem[] memory queueItems = new RedeemItem[](len);
@@ -296,11 +344,14 @@ contract Vault is
         return queueItems;
     }
 
-    // ============== Public Functions
+    // =========== Public Functions
+    /// @dev See {IERC4626-asset}.
     function asset() public view virtual returns (address) {
         return address(_asset);
     }
 
+    /// @notice Estimates using current price, amount of assets exchanged for given number of shares
+    /// @dev See {IERC4626-convertToShares}.
     function convertToAssets(
         uint256 shares
     ) public view virtual returns (uint256) {
@@ -313,6 +364,8 @@ contract Vault is
             );
     }
 
+    /// @notice Estimates using current price, amount of shares that would be minted for given assets
+    /// @dev See {IERC4626-convertToShares}.
     function convertToShares(
         uint256 assets
     ) public view virtual returns (uint256) {
@@ -325,10 +378,12 @@ contract Vault is
             );
     }
 
+    /// @notice Timestamp when the vault was created
     function createdAt() public view virtual returns (uint32) {
         return _createdAt;
     }
 
+    /// @dev See {IERC4626-decimals}.
     function decimals()
         public
         view
@@ -339,22 +394,28 @@ contract Vault is
         return _decimals;
     }
 
+    /// @notice Estimates using current price, amount of shares that would be minted for given assets
+    /// @dev See {IERC4626-maxDeposit}.
     function maxDeposit(address) public view virtual returns (uint256) {
         return type(uint256).max; // No limit
     }
 
-    /** @dev See {IERC4626-maxRedeem}. */
-    // Owner is the owner of the shares 4626 terminalogy
+    /// @dev See {IERC4626-maxRedeem}.
+    ///      Owner is not contract owner, but the owner of the shares
     function maxRedeem(address owner_) public view virtual returns (uint256) {
         return balanceOf(owner_);
     }
 
+    /// @dev See {IERC4626-previewDeposit}.
     function previewDeposit(
         uint256 assets
     ) public view virtual returns (uint256) {
         return convertToShares(assets);
     }
 
+    /// @notice Estimates using current price, amount of assets exchanged for given number of shares.
+    ///         Includes withdrawal fee
+    /// @dev See {IERC4626-previewRedeem}.
     function previewRedeem(
         uint256 shares
     ) public view virtual returns (uint256) {
@@ -368,14 +429,16 @@ contract Vault is
         return assets - fee;
     }
 
+    /// @notice Returns the total amount of the underlying assets that is "managed" by the vault.
+    /// @dev See {IERC4626-totalAssets}.
     function totalAssets() public view virtual returns (uint256) {
         return convertToAssets(totalSupply());
     }
 
-    // Internal functions
+    // ========== Internal Functions
     /**
-     * @dev Attempts to fetch the asset decimals. A return value of false indicates that the attempt failed in some way.
-     *  Taken from Openzepplin ERC4626
+     * @dev Attempts to fetch the asset decimals and returns false if failed in some way.
+     *      Taken from OpenZeppelin/contracts/token/ERC20/extensions/ERC4626.sol
      */
     function _tryGetAssetDecimals(
         IERC20 asset_
@@ -391,7 +454,7 @@ contract Vault is
         return (false, 0);
     }
 
-    ///@dev required by the OZ UUPS module
+    ///@dev Required by the OpenZepplin UUPSUpgradeable module
     function _authorizeUpgrade(
         address
     ) internal override(UUPSUpgradeable) onlyOwner {}
