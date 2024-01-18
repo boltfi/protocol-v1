@@ -22,8 +22,8 @@ contract Vault is
     uint256 public constant FEE_DECIMALS = 6;
     IERC20 private _asset;
     uint8 private _decimals;
+    uint32 public _createdAt;
 
-    uint32 public createdAt;
     uint32 public priceUpdatedAt;
     uint256 public price;
     uint256 public withdrawalFee;
@@ -91,7 +91,7 @@ contract Vault is
 
         price = 10 ** PRICE_DECIMALS;
         priceUpdatedAt = uint32(block.timestamp);
-        createdAt = uint32(block.timestamp);
+        _createdAt = uint32(block.timestamp);
     }
 
     // External User Functions
@@ -179,6 +179,21 @@ contract Vault is
             _mint(item.receiver, shares);
             emit Deposit(item.sender, item.receiver, item.assets, shares);
         }
+    }
+
+    function revertFrontDeposit() external onlyOwner {
+        DepositItem memory item = abi.decode(
+            DoubleEndedQueue.popFront(_depositQueue),
+            (DepositItem)
+        );
+        // Transfer deposit back
+        SafeERC20.safeTransferFrom(
+            _asset,
+            _msgSender(),
+            address(this),
+            item.assets
+        );
+        SafeERC20.safeTransfer(_asset, item.sender, item.assets);
     }
 
     function previewProcessRedeems(
@@ -308,6 +323,10 @@ contract Vault is
                 price,
                 Math.Rounding.Floor
             );
+    }
+
+    function createdAt() public view virtual returns (uint32) {
+        return _createdAt;
     }
 
     function decimals()

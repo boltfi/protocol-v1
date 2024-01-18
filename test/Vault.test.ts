@@ -559,6 +559,66 @@ describe("Vault Unit tests", function () {
     });
   });
 
+  describe("revert deposit function", function () {
+    it("Can reject if called by non-owner", async () => {
+      const { vault, userA } = await loadFixture(fixtureWithPendingDeposit);
+
+      await expect(
+        vault.write.processRedeems([BigInt(1), toBN(750, 6)], {
+          account: userA.account,
+        }),
+      ).to.eventually.be.rejectedWith("OwnableUnauthorizedAccount");
+    });
+
+    it("Can revert deposit", async () => {
+      const { vault, usdt, userA, owner } = await loadFixture(
+        fixtureWithPendingDeposit,
+      );
+
+      expect(await usdt.read.balanceOf([owner.account.address])).to.equal(
+        toBN(10_000, 6),
+      );
+      expect(await usdt.read.balanceOf([userA.account.address])).to.equal(
+        toBN(90_000, 6),
+      );
+      expect(await vault.read.balanceOf([vault.address])).to.equal(toBN(0, 6));
+      expect(await vault.read.balanceOf([userA.account.address])).to.equal(
+        toBN(0, 6),
+      );
+
+      expect(await vault.read.pendingDeposits()).to.deep.equal([
+        {
+          sender: getAddress(userA.account.address),
+          receiver: getAddress(userA.account.address),
+          assets: toBN(10_000, 6),
+          timestamp: await time.latest(),
+        },
+      ]);
+      expect(await vault.read.totalAssets()).to.equal(toBN(0, 6));
+      expect(await vault.read.totalSupply()).to.equal(toBN(0, 6));
+
+      await usdt.write.approve([vault.address, toBN(10_000, 6)], {
+        account: owner.account,
+      });
+
+      await vault.write.revertFrontDeposit({
+        account: owner.account,
+      });
+
+      expect(await vault.read.pendingDeposits()).to.deep.equal([]);
+
+      expect(await vault.read.totalAssets()).to.equal(toBN(0, 6));
+      expect(await vault.read.totalSupply()).to.equal(toBN(0, 6));
+
+      expect(await usdt.read.balanceOf([owner.account.address])).to.equal(
+        toBN(0, 6),
+      );
+      expect(await usdt.read.balanceOf([userA.account.address])).to.equal(
+        toBN(100_000, 6),
+      );
+    });
+  });
+
   describe("previewRedeem function", function () {
     it("Can preview Redeem with no withdrawal fee", async function () {
       const { vault } = await loadFixture(fixtureNewVault);
