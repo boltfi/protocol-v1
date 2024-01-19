@@ -1,0 +1,43 @@
+{
+  "name": "@boltfi/protocol-v1",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
+    "@nomicfoundation/hardhat-toolbox-viem": "^2.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.0",
+    "@nomicfoundation/hardhat-viem": "^1.0.0",
+    "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+    "@types/chai": "^4.2.0",
+    "@types/chai-as-promised": "^7.1.6",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.5",
+    "chai": "^4.2.0",
+    "chai-as-promised": "^7.1.1",
+    "hardhat": "^2.19.4",
+    "hardhat-deploy": "^0.11.45",
+    "hardhat-gas-reporter": "^1.0.8",
+    "prettier": "3.1.1",
+    "prettier-plugin-solidity": "1.3.1",
+    "solhint": "^4.1.1",
+    "solidity-coverage": "^0.8.0",
+    "solidity-docgen": "0.6.0-beta.36",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.0.4",
+    "viem": "^1.15.1"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.1",
+    "@openzeppelin/contracts-upgradeable": "^5.0.1",
+    "dotenv": "^16.3.1"
+  },
+  "scripts": {
+    "deploy": "hardhat deploy",
+    "verify": "hardhat etherscan-verify",
+    "hardhat": "hardhat",
+    "docgen": "hardhat docgen",
+    "format": "prettier --write .",
+    "mythril": "docker run --platform=linux/amd64 -v .:/tmp mythril/myth analyze /tmp/contracts/Vault.sol --solc-json /tmp/mythril.json",
+    "slither": "docker run -v .:/share trailofbits/eth-security-toolbox slither /share",
+    "solhint": "solhint contracts/**/*.sol",
+    "test": "hardhat test"
+  }
+}
