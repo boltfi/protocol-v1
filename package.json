@@ -1,10 +1,12 @@
 {
   "name": "@boltfi/protocol-v1",
   "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.5",
     "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
     "@nomicfoundation/hardhat-toolbox-viem": "^2.0.0",
     "@nomicfoundation/hardhat-verify": "^2.0.0",
     "@nomicfoundation/hardhat-viem": "^1.0.0",
+    "@openzeppelin/hardhat-upgrades": "^3.0.2",
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
     "@types/chai": "^4.2.0",
     "@types/chai-as-promised": "^7.1.6",
@@ -12,6 +14,7 @@
     "@types/node": "^20.11.5",
     "chai": "^4.2.0",
     "chai-as-promised": "^7.1.1",
+    "ethers": "^6.10.0",
     "hardhat": "^2.19.4",
     "hardhat-deploy": "^0.11.45",
     "hardhat-gas-reporter": "^1.0.8",

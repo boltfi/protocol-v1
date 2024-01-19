@@ -1,4 +1,5 @@
 import "@nomicfoundation/hardhat-toolbox-viem";
+import "@openzeppelin/hardhat-upgrades";
 import "dotenv/config";
 import "hardhat-deploy";
 import { HardhatUserConfig } from "hardhat/config";
@@ -6,6 +7,11 @@ import "solidity-docgen";
 
 const config = {
   solidity: "0.8.20",
+  defender: {
+    apiKey: process.env.API_KEY,
+    apiSecret: process.env.API_SECRET,
+    // useDefenderDeploy: true,
+  },
   docgen: {
     pages: "files",
     exclude: [],
