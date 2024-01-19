@@ -1,5 +1,5 @@
 {
-  "name": "@boltfi/contracts-v1",
+  "name": "@boltfi/protocol-v1",
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "^3.0.5",
     "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
