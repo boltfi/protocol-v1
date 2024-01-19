@@ -55,9 +55,7 @@ library DoubleEndedQueue {
      *
      * Reverts with `QueueEmpty` if the queue is empty.
      */
-    function popFront(
-        BytesDeque storage deque
-    ) internal returns (bytes memory value) {
+    function popFront(BytesDeque storage deque) internal returns (bytes memory value) {
         unchecked {
             uint128 frontIndex = deque._begin;
             if (frontIndex == deque._end) revert QueueEmpty();
@@ -73,10 +71,7 @@ library DoubleEndedQueue {
      *
      * Reverts with `QueueOutOfBounds` if the index is out of bounds.
      */
-    function at(
-        BytesDeque storage deque,
-        uint256 index
-    ) internal view returns (bytes memory value) {
+    function at(BytesDeque storage deque, uint256 index) internal view returns (bytes memory value) {
         if (index >= length(deque)) revert QueueOutOfBounds();
         // By construction, length is a uint128, so the check above ensures that index can be safely downcast to uint128
         unchecked {

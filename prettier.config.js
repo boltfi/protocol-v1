@@ -5,4 +5,13 @@ module.exports = {
   ],
   importOrderSeparation: true,
   importOrderSortSpecifiers: true,
+  overrides: [
+    {
+      files: "*.sol",
+      options: {
+        parser: "solidity-parse",
+        printWidth: 120,
+      },
+    },
+  ],
 };

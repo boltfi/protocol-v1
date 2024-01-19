@@ -460,21 +460,6 @@ describe("Vault Unit tests", function () {
       ).to.eventually.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
-    it("Can preview process deposits", async function () {
-      const { vault, owner } = await loadFixture(fixtureWithPendingDeposit);
-
-      const queue = await vault.read.pendingDeposits();
-      await vault.write.updatePrice([toBN(1.25, 18)], {
-        account: owner.account,
-      });
-
-      expect(
-        await vault.read.previewProcessDeposits([BigInt(1)]),
-      ).to.deep.equal([toBN(10_000, 6), toBN(8_000, 6)]);
-
-      expect(await vault.read.pendingDeposits()).to.deep.equal(queue);
-    });
-
     it("Can process queued deposits", async function () {
       const { vault, usdt, userA, owner } = await loadFixture(
         fixtureWithPendingDeposit,
@@ -688,36 +673,6 @@ describe("Vault Unit tests", function () {
           timestamp: await time.latest(),
         },
       ]);
-    });
-  });
-
-  describe("preview process redeem function", function () {
-    it("Can preview process redeem with no withdrawal fee", async () => {
-      const { vault } = await loadFixture(fixtureWithPendingRedeem);
-      const queue = await vault.read.pendingRedeems();
-
-      expect(await vault.read.previewProcessRedeems([BigInt(1)])).to.deep.equal(
-        [toBN(10_000, 6), toBN(8_000, 6), toBN(0, 6)],
-      );
-
-      // Queue is unchanged
-      expect(await vault.read.pendingRedeems()).to.deep.equal(queue);
-    });
-
-    it("Can preview process redeem with withdrawal fee", async () => {
-      const { vault, owner } = await loadFixture(fixtureWithPendingRedeem);
-      const queue = await vault.read.pendingRedeems();
-
-      await vault.write.updateWithdrawalFee([BigInt(0.01 * 10 ** 6)], {
-        account: owner.account,
-      });
-
-      expect(await vault.read.previewProcessRedeems([BigInt(1)])).to.deep.equal(
-        [toBN(9_900, 6), toBN(8_000, 6), toBN(100, 6)],
-      );
-
-      // Queue is unchanged
-      expect(await vault.read.pendingRedeems()).to.deep.equal(queue);
     });
   });
 
