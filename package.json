@@ -30,14 +30,15 @@
     "dotenv": "^16.3.1"
   },
   "scripts": {
+    "chain": "hardhat node",
     "deploy": "hardhat deploy",
-    "verify": "hardhat etherscan-verify",
-    "hardhat": "hardhat",
     "docgen": "hardhat docgen",
     "format": "prettier --write .",
+    "hardhat": "hardhat",
     "mythril": "docker run --platform=linux/amd64 -v .:/tmp mythril/myth analyze /tmp/contracts/Vault.sol --solc-json /tmp/mythril.json",
     "slither": "docker run -v .:/share trailofbits/eth-security-toolbox slither /share",
     "solhint": "solhint contracts/**/*.sol",
+    "verify": "hardhat etherscan-verify",
     "test": "hardhat test"
   }
 }

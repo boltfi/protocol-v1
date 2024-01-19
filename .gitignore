@@ -13,5 +13,8 @@ node_modules
 /coverage
 /coverage.json
 
+// State of local deployments
+/deployments/localhost
+
 # IDE Files
 /.vscode
