@@ -2,18 +2,18 @@
 
 ## Vault
 
-\_This contract represents a vault that allows users to deposit and redeem assets at any time.
-However, these actions are queued and processed by the owner at a later date.
-The conversion of assets to shares and vice versa is based on the price at the time of processing,
-which can be updated by the owner at any time.
+This contract represents a vault that allows users to deposit and redeem assets at any time.
+        However, these actions are queued and processed by the owner at a later date.
+        The conversion of assets to shares and vice versa is based on the price at the time of processing,
+        which can be updated by the owner at any time.
 
-     The expected user journey is as follows:
-     1. Users deposit assets into the vault using the `deposit` function.
-     2. The owner processes the deposit, minting shares to the user using the `processDeposits` function.
-     3. Users can redeem their shares for assets using the `redeem` function.
-     4. The owner processes the redeem, sending the assets to the user and burning the shares using the `processRedeems` function.
+        The expected user journey is as follows:
+        1. Users deposit assets into the vault using the `deposit` function.
+        2. The owner processes the deposit, minting shares to the user using the `processDeposits` function.
+        3. Users can redeem their shares for assets using the `redeem` function.
+        4. The owner processes the redeem, sending the assets to the user and burning the shares using the `processRedeems` function.
 
-     This contract implements a subset of the OpenZeppelin ERC-4626 standard, and the functions are referenced accordingly._
+_This contract implements a subset of the OpenZeppelin ERC-4626 standard, and the functions are referenced accordingly._
 
 ### PRICE_DECIMALS
 
@@ -26,14 +26,6 @@ uint256 PRICE_DECIMALS
 ```solidity
 uint256 FEE_DECIMALS
 ```
-
-### \_createdAt
-
-```solidity
-uint32 _createdAt
-```
-
-Timestamp of when the contract was created
 
 ### priceUpdatedAt
 
@@ -57,7 +49,7 @@ uint256 price
 uint256 withdrawalFee
 ```
 
-_10\*\*6 would be 100%_
+_10**6 would be 100%_
 
 ### Deposit
 
@@ -83,16 +75,24 @@ event PriceUpdate(uint256 price)
 
 _Emited when price is udpated_
 
+### WithdrawalFeeUpdate
+
+```solidity
+event WithdrawalFeeUpdate(uint256 withdrawalFee)
+```
+
+_Emited when withdrawal fee is udpated_
+
 ### onlyUpdatedPrice
 
 ```solidity
 modifier onlyUpdatedPrice()
 ```
 
-### DepositItem
+### PendingDeposit
 
 ```solidity
-struct DepositItem {
+struct PendingDeposit {
   address sender;
   address receiver;
   uint256 assets;
@@ -100,10 +100,10 @@ struct DepositItem {
 }
 ```
 
-### RedeemItem
+### PendingRedeem
 
 ```solidity
-struct RedeemItem {
+struct PendingRedeem {
   address caller;
   address owner;
   address receiver;
@@ -119,6 +119,12 @@ error ERC4626ExceededMaxRedeem(address owner, uint256 shares, uint256 max)
 ```
 
 _See {IERC4626-maxRedeem}._
+
+### constructor
+
+```solidity
+constructor() public
+```
 
 ### initialize
 
@@ -141,8 +147,8 @@ function redeem(uint256 shares, address receiver, address owner_) external virtu
 ```
 
 @dev Follows {IERC4626-redeem}, shares are held in the contract and burned during processing
-Shares are held in the contract to avoid user transfers while queued
-Owner is not contract owner, but the owner of the shares
+      Shares are held in the contract to avoid user transfers while queued
+      Owner is not contract owner, but the owner of the shares
 
 ### previewProcessDeposits
 
@@ -163,7 +169,7 @@ Preview the amount of assets that will be sent, and withdrawal fee earned for th
 ### updatePrice
 
 ```solidity
-function updatePrice(uint256 newPrice) external
+function updatePrice(uint256 price_) external
 ```
 
 ### updateWithdrawalFee
@@ -231,7 +237,7 @@ _No equivalent for ETH as it can't be recieve due to no fallback function_
 ### pendingDeposits
 
 ```solidity
-function pendingDeposits() external view returns (struct Vault.DepositItem[])
+function pendingDeposits() external view returns (struct Vault.PendingDeposit[])
 ```
 
 Returns the current pending deposits in the queue
@@ -239,7 +245,7 @@ Returns the current pending deposits in the queue
 ### pendingRedeems
 
 ```solidity
-function pendingRedeems() external view returns (struct Vault.RedeemItem[])
+function pendingRedeems() external view returns (struct Vault.PendingRedeem[])
 ```
 
 Returns the current pending redeems in the queue
@@ -305,7 +311,7 @@ function maxRedeem(address owner_) public view virtual returns (uint256)
 ```
 
 _See {IERC4626-maxRedeem}.
-Owner is not contract owner, but the owner of the shares_
+     Owner is not contract owner, but the owner of the shares_
 
 ### previewDeposit
 
@@ -321,8 +327,8 @@ _See {IERC4626-previewDeposit}._
 function previewRedeem(uint256 shares) public view virtual returns (uint256)
 ```
 
-Estimates using current price, amount of assets exchanged for given number of shares
-Includes withdrawal fee
+Estimates using current price, amount of assets exchanged for given number of shares.
+        Includes withdrawal fee
 
 _See {IERC4626-previewRedeem}._
 
@@ -336,10 +342,17 @@ Returns the total amount of the underlying assets that is "managed" by the vault
 
 _See {IERC4626-totalAssets}._
 
-### \_authorizeUpgrade
+### _authorizeUpgrade
 
 ```solidity
 function _authorizeUpgrade(address) internal
 ```
 
 _Required by the OpenZepplin UUPSUpgradeable module_
+
+### _update
+
+```solidity
+function _update(address from, address to, uint256 value) internal
+```
+

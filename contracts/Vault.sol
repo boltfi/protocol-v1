@@ -93,13 +93,13 @@ contract Vault is
     }
 
     // ========== Structs, arrays, or enums
-    struct DepositItem {
+    struct PendingDeposit {
         address sender;
         address receiver;
         uint256 assets;
         uint32 timestamp;
     }
-    struct RedeemItem {
+    struct PendingRedeem {
         address caller;
         address owner;
         address receiver;
@@ -132,7 +132,7 @@ contract Vault is
         (bool success, uint8 assetDecimals) = _tryGetAssetDecimals(asset_);
         _decimals = success ? assetDecimals : 18;
 
-        price = 10 ** PRICE_DECIMALS;
+        price = 10 ** PRICE_DECIMALS; // Set initial price to 1
         priceUpdatedAt = uint32(block.timestamp);
         _createdAt = uint32(block.timestamp);
     }
@@ -146,7 +146,7 @@ contract Vault is
         SafeERC20.safeTransferFrom(_asset, _msgSender(), address(this), assets);
         SafeERC20.safeTransfer(_asset, owner(), assets);
 
-        DepositItem memory item = DepositItem(
+        PendingDeposit memory item = PendingDeposit(
             _msgSender(),
             receiver,
             assets,
@@ -179,7 +179,7 @@ contract Vault is
         // This blocks users from transfering shares while in the queue
         _transfer(owner_, address(this), shares);
 
-        RedeemItem memory item = RedeemItem(
+        PendingRedeem memory item = PendingRedeem(
             caller,
             owner_,
             receiver,
@@ -194,9 +194,9 @@ contract Vault is
         uint128 number
     ) external view onlyUpdatedPrice returns (uint256 assets, uint256 shares) {
         for (uint128 i = 0; i < number; i++) {
-            DepositItem memory item = abi.decode(
+            PendingDeposit memory item = abi.decode(
                 DoubleEndedQueue.at(_depositQueue, i),
-                (DepositItem)
+                (PendingDeposit)
             );
             assets += item.assets;
         }
@@ -215,9 +215,9 @@ contract Vault is
         returns (uint256 assets, uint256 shares, uint256 fee)
     {
         for (uint256 i = 0; i < number; i++) {
-            RedeemItem memory item = abi.decode(
+            PendingRedeem memory item = abi.decode(
                 DoubleEndedQueue.at(_redeemQueue, i),
-                (RedeemItem)
+                (PendingRedeem)
             );
             shares += item.shares;
         }
@@ -242,25 +242,26 @@ contract Vault is
 
     /// @notice Reverts the next deposit, refunding the assets to the sender
     function revertFrontDeposit() external onlyOwner {
-        DepositItem memory item = abi.decode(
+        PendingDeposit memory item = abi.decode(
             DoubleEndedQueue.popFront(_depositQueue),
-            (DepositItem)
+            (PendingDeposit)
         );
-        // Transfer deposit back
+        // Get the assets back from the owner...
         SafeERC20.safeTransferFrom(
             _asset,
             _msgSender(),
             address(this),
             item.assets
         );
+        // ...and transfer deposit back original sender
         SafeERC20.safeTransfer(_asset, item.sender, item.assets);
     }
 
     /// @notice Reverts the next redeem, refunding the shares to the owner
     function revertFrontRedeem() external onlyOwner {
-        RedeemItem memory item = abi.decode(
+        PendingRedeem memory item = abi.decode(
             DoubleEndedQueue.popFront(_redeemQueue),
-            (RedeemItem)
+            (PendingRedeem)
         );
         // Transfer shares back previously locked in the contract pending redeem
         _transfer(address(this), item.owner, item.shares);
@@ -271,9 +272,9 @@ contract Vault is
         uint128 number
     ) external onlyOwner onlyUpdatedPrice {
         for (uint128 i = 0; i < number; i++) {
-            DepositItem memory item = abi.decode(
+            PendingDeposit memory item = abi.decode(
                 DoubleEndedQueue.popFront(_depositQueue),
-                (DepositItem)
+                (PendingDeposit)
             );
             uint256 shares = convertToShares(item.assets);
             _mint(item.receiver, shares);
@@ -289,14 +290,14 @@ contract Vault is
         SafeERC20.safeTransferFrom(_asset, _msgSender(), address(this), total);
 
         for (uint256 i = 0; i < number; i++) {
-            RedeemItem memory item = abi.decode(
+            PendingRedeem memory item = abi.decode(
                 DoubleEndedQueue.popFront(_redeemQueue),
-                (RedeemItem)
+                (PendingRedeem)
             );
 
             uint256 assets = previewRedeem(item.shares);
 
-            // Burn the shares locked in the contract pending redeem
+            // Burn the shares locked in the contract until now
             _burn(address(this), item.shares);
             SafeERC20.safeTransfer(_asset, item.receiver, assets);
             emit Withdraw(
@@ -308,7 +309,7 @@ contract Vault is
             );
         }
 
-        // Expect all the assets to be spent
+        // Expect all the assets to be spent, otherwise something went wrong
         require(_asset.balanceOf(address(this)) == 0, "Incorrect amount given");
     }
 
@@ -331,26 +332,26 @@ contract Vault is
 
     // =========== External Functions that are view
     /// @notice Returns the current pending deposits in the queue
-    function pendingDeposits() external view returns (DepositItem[] memory) {
+    function pendingDeposits() external view returns (PendingDeposit[] memory) {
         uint256 len = DoubleEndedQueue.length(_depositQueue);
-        DepositItem[] memory queueItems = new DepositItem[](len);
+        PendingDeposit[] memory queueItems = new PendingDeposit[](len);
         for (uint256 i = 0; i < len; i++) {
             queueItems[i] = abi.decode(
                 DoubleEndedQueue.at(_depositQueue, i),
-                (DepositItem)
+                (PendingDeposit)
             );
         }
         return queueItems;
     }
 
     /// @notice Returns the current pending redeems in the queue
-    function pendingRedeems() external view returns (RedeemItem[] memory) {
+    function pendingRedeems() external view returns (PendingRedeem[] memory) {
         uint256 len = DoubleEndedQueue.length(_redeemQueue);
-        RedeemItem[] memory queueItems = new RedeemItem[](len);
+        PendingRedeem[] memory queueItems = new PendingRedeem[](len);
         for (uint128 i = 0; i < len; i++) {
             queueItems[i] = abi.decode(
                 DoubleEndedQueue.at(_redeemQueue, i),
-                (RedeemItem)
+                (PendingRedeem)
             );
         }
         return queueItems;

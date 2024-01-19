@@ -9,6 +9,8 @@ import { decodeEventLog, getAddress } from "viem";
 
 chai.use(chaiAsPromised);
 const toBN = (n: number, decimals = 6) => BigInt(n * 10 ** decimals);
+
+// Hardhat-viem doesn't have chai helpers yet - so need our own
 async function getEmittedEvent(
   hash: `0x${string}`,
   abi: any,
@@ -24,6 +26,7 @@ async function getEmittedEvent(
   }
   return {};
 }
+
 async function fixtureNewVault() {
   const [deployer, owner, userA, userB, userC] =
     await hre.viem.getWalletClients();
@@ -156,6 +159,7 @@ async function fixtureWithMultipleRedeem() {
 
   return deployment;
 }
+
 describe("Vault Unit tests", function () {
   describe("Deployment", function () {
     it("Should set the right name and symbol", async function () {
@@ -689,9 +693,7 @@ describe("Vault Unit tests", function () {
 
   describe("preview process redeem function", function () {
     it("Can preview process redeem with no withdrawal fee", async () => {
-      const { vault, usdt, userA, owner } = await loadFixture(
-        fixtureWithPendingRedeem,
-      );
+      const { vault } = await loadFixture(fixtureWithPendingRedeem);
       const queue = await vault.read.pendingRedeems();
 
       expect(await vault.read.previewProcessRedeems([BigInt(1)])).to.deep.equal(
@@ -770,7 +772,7 @@ describe("Vault Unit tests", function () {
     });
 
     it("Can reject if insufficient assets sent for redeem", async () => {
-      const { vault, usdt, userA, owner } = await loadFixture(
+      const { vault, usdt, owner } = await loadFixture(
         fixtureWithMultipleRedeem,
       );
 
@@ -882,9 +884,7 @@ describe("Vault Unit tests", function () {
 
   describe("revert redeem function", function () {
     it("Can reject if called by non-owner", async () => {
-      const { vault, usdt, userA, owner } = await loadFixture(
-        fixtureWithPendingRedeem,
-      );
+      const { vault, userA } = await loadFixture(fixtureWithPendingRedeem);
 
       await expect(
         vault.write.processRedeems([BigInt(1), toBN(750, 6)], {
@@ -923,7 +923,7 @@ describe("Vault Unit tests", function () {
       expect(await vault.read.totalAssets()).to.equal(toBN(10_000, 6));
       expect(await vault.read.totalSupply()).to.equal(toBN(8_000, 6));
 
-      const hash = await vault.write.revertFrontRedeem({
+      await vault.write.revertFrontRedeem({
         account: owner.account,
       });
 
