@@ -1,11 +1,17 @@
 import "@nomicfoundation/hardhat-toolbox-viem";
+import "@openzeppelin/hardhat-upgrades";
 import "dotenv/config";
 import "hardhat-deploy";
 import { HardhatUserConfig } from "hardhat/config";
 import "solidity-docgen";
 
-const config: HardhatUserConfig = {
+const config = {
   solidity: "0.8.20",
+  defender: {
+    apiKey: process.env.API_KEY,
+    apiSecret: process.env.API_SECRET,
+    // useDefenderDeploy: true,
+  },
   docgen: {
     pages: "files",
     exclude: [],
@@ -26,7 +32,9 @@ const config: HardhatUserConfig = {
     arbitrumSepolia: {
       url: "https://sepolia-rollup.arbitrum.io/rpc",
       chainId: 421614,
-      accounts: [`${process.env.DEPLOYER_PRIVATE_KEY}`],
+      accounts: process.env.DEPLOYER_PRIVATE_KEY
+        ? [process.env.DEPLOYER_PRIVATE_KEY]
+        : undefined,
       verify: {
         etherscan: {
           apiUrl: "https://api-sepolia.arbiscan.io",

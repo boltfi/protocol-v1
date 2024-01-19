@@ -44,7 +44,7 @@ contract Vault is
     IERC20 private _asset;
 
     /// @notice Timestamp of when the contract was created
-    uint32 public _createdAt;
+    uint32 private _createdAt;
 
     /// @notice Decimals of the Vault LP Token
     /// @dev Set to decimals of the asset if the asset is ERC20, otherwise 18. See {IERC4626-decimals}.

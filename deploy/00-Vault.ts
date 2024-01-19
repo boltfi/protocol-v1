@@ -24,6 +24,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
       proxy: {
         proxyContract: "UUPS",
         owner,
+        upgradeFunction: {
+          methodName: "upgradeToAndCall",
+          upgradeArgs: ["{implementation}", "{data}"],
+        },
         execute: {
           init: {
             methodName: "initialize",
