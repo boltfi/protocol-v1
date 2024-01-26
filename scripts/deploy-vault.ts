@@ -10,8 +10,8 @@ async function main() {
     ? usdt
     : (await deployments.get("MockUSDT")).address;
 
-  const name = "Vault";
-  const symbol = "BLT";
+  const name = "Boltfi.io USDT Funding 1";
+  const symbol = "bv-Bolt-USDT-Funding-1";
 
   console.log(`Name  : ${name}`);
   console.log(`Symbol: ${symbol}`);

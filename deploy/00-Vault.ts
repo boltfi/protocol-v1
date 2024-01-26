@@ -2,14 +2,12 @@ import { DeployFunction } from "hardhat-deploy/types";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, getNamedAccounts, network } = hre;
-  const { deploy, catchUnknownSigner } = deployments;
+  const { deployments, getNamedAccounts } = hre;
+  const { save } = deployments;
 
-  const { deployer, usdt, owner } = await getNamedAccounts();
+  const { owner } = await getNamedAccounts();
 
-  const asset = network.live
-    ? usdt
-    : (await deployments.get("MockUSDT")).address;
+  const asset = (await deployments.get("MockUSDT")).address;
 
   const args = [
     "Vault", // Name
@@ -17,29 +15,25 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     asset, // Asset,
     owner, // Owner
   ];
-  // We don't have the owner key, need to do manually
-  await catchUnknownSigner(
-    deploy("Vault", {
-      from: deployer,
-      proxy: {
-        proxyContract: "UUPS",
-        owner,
-        upgradeFunction: {
-          methodName: "upgradeToAndCall",
-          upgradeArgs: ["{implementation}", "{data}"],
-        },
-        execute: {
-          init: {
-            methodName: "initialize",
-            args,
-          },
-        },
-      },
-      log: true,
-    }),
-  );
+
+  // Use openzeppelin deploy proxy to match production
+  const Vault = await hre.ethers.getContractFactory("Vault");
+  const vault = await hre.upgrades.deployProxy(Vault, args, {
+    kind: "uups",
+    redeployImplementation: "onchange",
+    useDefenderDeploy: false,
+  });
+  await vault.waitForDeployment();
+
+  // Save the deployed contract back into hardhat-deploy to take advantage
+  // of automatic deployment
+  const address = await vault.getAddress();
+  const artifact = await deployments.getArtifact("Vault");
+  await save("Vault", { address, abi: artifact.abi });
 };
 
+// Only use this for local deployments
+func.skip = async ({ network }) => network.live;
 func.tags = ["Vault"];
 func.dependencies = ["MockUSDT"]; // this ensure the Token script above is executed first, so `deployments.get('Token')` succeeds
 
