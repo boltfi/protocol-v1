@@ -30,7 +30,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const address = await vault.getAddress();
   const artifact = await deployments.getArtifact("Vault");
   await save("Vault", { address, abi: artifact.abi });
-  console.log(`Deployed vault to ${address}`);
 };
 
 // Only use this for local deployments
