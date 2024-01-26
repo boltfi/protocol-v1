@@ -370,6 +370,16 @@ describe("Vault Unit tests", function () {
       });
     });
 
+    it("Can reject withdrawal fee above 100%", async function () {
+      const { vault, owner } = await loadFixture(fixtureNewVault);
+      const withdrawalFee = BigInt(10 ** 6 + 1);
+      await expect(
+        vault.write.updateWithdrawalFee([withdrawalFee], {
+          account: owner.account,
+        }),
+      ).to.eventually.be.rejectedWith("Withdrawal fee must be less than 100%");
+    });
+
     it("Deployer cannot update the withdrawal fee", async function () {
       const { vault, deployer } = await loadFixture(fixtureNewVault);
       await expect(

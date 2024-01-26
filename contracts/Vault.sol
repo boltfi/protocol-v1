@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -21,8 +21,8 @@ contract Vault is Initializable, ERC20, ERC20Pausable, Ownable, UUPS {
     uint8 private _decimals; /// Decimals of the Vault LP Token
     uint32 public createdAt; // Timestamp of when the contract was created
     uint32 public priceUpdatedAt; // Timestamp of when price was last updated
-    uint256 public price; // Price of the vault in 10**18 decimals
-    uint256 public withdrawalFee; // 10**6 would be 100%
+    uint256 public price; // Price of the vault in 10 ** PRICE_DECIMALS decimals
+    uint256 public withdrawalFee; // 10 ** FEE_DECIMALS would be 100%
     Queue.BytesDeque private _depositQueue;
     Queue.BytesDeque private _redeemQueue;
 
@@ -156,6 +156,7 @@ contract Vault is Initializable, ERC20, ERC20Pausable, Ownable, UUPS {
     }
 
     function updateWithdrawalFee(uint256 withdrawalFee_) external onlyOwner {
+        require(withdrawalFee_ <= 10 ** FEE_DECIMALS, "Withdrawal fee must be less than 100%");
         withdrawalFee = withdrawalFee_;
         emit WithdrawalFeeUpdate(withdrawalFee_);
     }
