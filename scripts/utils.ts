@@ -19,6 +19,8 @@ export function getExplorerLinkForAddress(
   address: string,
 ): string {
   switch (networkName) {
+    case "arbitrum":
+      return `https://arbiscan.io/address/${address}`;
     case "sepolia":
       return `https://sepolia.etherscan.io/address/${address}`;
     default:

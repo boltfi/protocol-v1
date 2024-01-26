@@ -1,4 +1,4 @@
-NETWORK="sepolia"
+NETWORK="arbitrumOne"
 
 function deploy {
   npm run hardhat -- --network $NETWORK run ./scripts/deploy-vault.ts 
